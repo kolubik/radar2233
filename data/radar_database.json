@@ -1,0 +1,315 @@
+{
+  "version": "1.0.0",
+  "lastSaved": 1791890394234,
+  "savedDate": "2026-10-13T11:19:54.234Z",
+  "filterConfig": {
+    "removeUrls": true,
+    "removeMentions": true,
+    "removeDonations": true,
+    "removeClickbait": true,
+    "removeExcessiveEmojis": true,
+    "useAiSanitizer": true,
+    "minSeverity": "ALL",
+    "autoForward": false,
+    "customKeywords": [
+      "карта моно",
+      "подпишись на резерв",
+      "все подробности тут",
+      "банка моно",
+      "донатьте"
+    ],
+    "customRegexes": [
+      "(?:https?:\\/\\/t\\.me\\/\\+[a-zA-Z0-9_]+)",
+      "(?:скиньте\\s+на\\s+кофе)",
+      "(?:USDT\\s*TRC20?:?\\s*[A-Za-z0-9]{30,})"
+    ],
+    "alertTemplate": "🚨 [РАДАР УГРОЗ] {TYPE_EMOJI} {TYPE}\n📍 Сектор: {REGIONS}\n🧭 Направление: {VECTOR}\n⚠️ Уровень угрозы: {SEVERITY}\n\n📝 Сводка:\n{TEXT}\n\n🛡️ Очищено от спама и рекламы • RadarTG Bot",
+    "soundAlerts": true,
+    "attachInlineButtons": true,
+    "useTelegramBlockquote": true,
+    "quoteHeaderTitle": "Розвідка України",
+    "defaultFollowupComment": "Не фіксується",
+    "expandableQuote": false,
+    "forwardingMode": "blockquote",
+    "ultraFastMode": true
+  },
+  "telegramConfig": {
+    "botToken": "",
+    "targetChannelId": "",
+    "botUsername": null,
+    "botFirstName": null
+  },
+  "parsingChannels": [
+    {
+      "id": "ch-kpszsu",
+      "username": "@kpszsu",
+      "title": "Повітряні Сили ЗСУ",
+      "category": "AIR_FORCE",
+      "active": true,
+      "priority": "HIGH",
+      "parseIntervalSeconds": 5,
+      "autoForward": true,
+      "parsedMessagesCount": 48,
+      "lastParsedAt": 1791890274233,
+      "lastAlertDetected": "Взлет 4х Ту-95мс с аэродрома Оленья",
+      "notes": "Официальные сводки Командования Воздушных Сил"
+    },
+    {
+      "id": "ch-vanek",
+      "username": "@vanek_nikolaev",
+      "title": "Николаевский Ванёк",
+      "category": "RADAR",
+      "active": true,
+      "priority": "HIGH",
+      "parseIntervalSeconds": 5,
+      "autoForward": true,
+      "parsedMessagesCount": 112,
+      "lastParsedAt": 1791890154233,
+      "lastAlertDetected": "Шахеды через Берислав на Снигиревку",
+      "notes": "Высокая оперативность, маршруты БПЛА и векторы"
+    },
+    {
+      "id": "ch-kyiv-alerts",
+      "username": "@kyiv_alerts_oper",
+      "title": "Оперативный Киев / Радар",
+      "category": "REGIONAL",
+      "active": true,
+      "priority": "HIGH",
+      "parseIntervalSeconds": 10,
+      "autoForward": true,
+      "parsedMessagesCount": 89,
+      "lastParsedAt": 1791889974233,
+      "lastAlertDetected": "БПЛА на Белую Церковь / Васильков",
+      "notes": "Сводки по Киеву, Фастову, Броварам, ПВО"
+    },
+    {
+      "id": "ch-dnipro-monitor",
+      "username": "@dnipro_monitor",
+      "title": "Днепр Монитор & КАБ",
+      "category": "REGIONAL",
+      "active": true,
+      "priority": "NORMAL",
+      "parseIntervalSeconds": 15,
+      "autoForward": true,
+      "parsedMessagesCount": 63,
+      "lastParsedAt": 1791889674233,
+      "lastAlertDetected": "Угроза КАБ по Запорожскому району",
+      "notes": "Южное и восточное направление, пуски КАБ/ФАБ"
+    },
+    {
+      "id": "ch-air-raid-ua",
+      "username": "@air_raid_ua",
+      "title": "Карта воздушных тревог Украины",
+      "category": "OFFICIAL",
+      "active": true,
+      "priority": "NORMAL",
+      "parseIntervalSeconds": 15,
+      "autoForward": false,
+      "parsedMessagesCount": 34,
+      "lastParsedAt": 1791889194233,
+      "lastAlertDetected": "Воздушная тревога в Черниговской области",
+      "notes": "Фиксация сирен и отбоев"
+    },
+    {
+      "id": "ch-odesa-oper",
+      "username": "@odesa_operatyvna",
+      "title": "Одесса Оперативная / Черное Море",
+      "category": "REGIONAL",
+      "active": false,
+      "priority": "LOW",
+      "parseIntervalSeconds": 20,
+      "autoForward": false,
+      "parsedMessagesCount": 19,
+      "lastParsedAt": 1791887394233,
+      "lastAlertDetected": "Пуски с мыса Тарханкут / Крым",
+      "notes": "Черноморский регион, Затока, Одесса"
+    }
+  ],
+  "telegramSubscribers": [
+    {
+      "chatId": "demo-user-1",
+      "username": "tactical_operator",
+      "firstName": "Оператор Дмитро",
+      "minSeverity": "ALL",
+      "subscribedTypes": [
+        "MISSILE",
+        "BALLISTIC",
+        "DRONE",
+        "AVIATION"
+      ],
+      "subscribedRegions": [],
+      "active": true,
+      "createdAt": 1791803994233
+    }
+  ],
+  "tacticalTasks": [
+    {
+      "id": "task-khmelnytskyi-radar",
+      "name": "Хмельницкая область: Поиск причины тревоги и маршрута БПЛА",
+      "enabled": true,
+      "targetRegion": "Хмельницкая",
+      "triggerThreatType": "AIR_RAID",
+      "searchCauseInChannels": true,
+      "trackRouteAndSeverity": true,
+      "autoPublishTelegram": true,
+      "triggerCount": 3,
+      "lastTriggeredAt": 1791889314233,
+      "lastFoundCause": "3х БПЛА Shahed из Винницкой области (Бар -> Летичев)",
+      "lastAssignedLevel": "ORANGE"
+    },
+    {
+      "id": "task-kyiv-threat-path",
+      "name": "Киев и область: Корреляция пусков и траектории через Чернигов/Сумы",
+      "enabled": true,
+      "targetRegion": "Киев",
+      "triggerThreatType": "ANY",
+      "searchCauseInChannels": true,
+      "trackRouteAndSeverity": true,
+      "autoPublishTelegram": false,
+      "triggerCount": 7,
+      "lastTriggeredAt": 1791887694233,
+      "lastFoundCause": "Группа БПЛА через Черниговскую обл. курсом на Бровары/Васильков",
+      "lastAssignedLevel": "RED"
+    },
+    {
+      "id": "task-odesa-sea-launches",
+      "name": "Одесса и Черноморск: Анализ пусков с моря и траектории через Затоку",
+      "enabled": true,
+      "targetRegion": "Одесса",
+      "triggerThreatType": "DRONE",
+      "searchCauseInChannels": true,
+      "trackRouteAndSeverity": true,
+      "autoPublishTelegram": false,
+      "triggerCount": 2,
+      "lastTriggeredAt": 1791884994233,
+      "lastFoundCause": "Заход 4х Шахедов со стороны Черного моря через Затоку/Маяки",
+      "lastAssignedLevel": "YELLOW"
+    }
+  ],
+  "taskExecutionLogs": [
+    {
+      "id": "log-1",
+      "taskId": "task-khmelnytskyi-radar",
+      "taskName": "Хмельницкая область: Поиск причины тревоги и маршрута БПЛА",
+      "timestamp": 1791889314233,
+      "targetRegion": "Хмельницкая область",
+      "triggerAlertId": "sample-1",
+      "foundCause": "По данным мониторинга Винничины (@vinnytsia_alerts): зафиксирован пролет 3х БПЛА \"Shahed-136\" через Липовец -> Бар в направлении Хмельницкой области.",
+      "routePath": "Винницкая обл. (Ладыжин -> Бар) ➔ Хмельницкая обл. (Деражня ➔ Староконстантинов)",
+      "threatLevel": "ORANGE",
+      "generatedTelegramPost": "<b>Розвідка України</b>\n\n<blockquote>📢 <b>Хмельницька ОВА</b>\n🚨 Хмельницька область — ПОВІТРЯНА ТРИВОГА!</blockquote>\n\n🟠 <b>[СТУПЕНЬ УГРОЗЫ: ВЫСОКИЙ]</b>\n🧭 <b>Маршрут БПЛА:</b> Вінниччина ➔ Деражня ➔ Старокостянтинів\n🔍 <b>Причина:</b> 3х Шахеди на низькій висоті курсом на Старокостянтинів. Працює ППО.",
+      "publishedToTelegram": false
+    }
+  ],
+  "alertFeed": [
+    {
+      "id": "sample-1",
+      "timestamp": 1791890154233,
+      "sourceChannel": "@kyiv_alerts_oper",
+      "originalText": "🚨 КИЕВ и ОБЛАСТЬ! Внимание!\nГруппа БПЛА \"Shahed-136\" движется курсом на Белую Церковь / Васильков! Скорость ~185 км/ч.\n\n❗️ Срочно в укрытия!\n\n👇👇👇\nСбор на тепловизоры и антидроновые ружья для 72-й бригады! Ссылка на монобанку: https://send.monobank.ua/jar/9X28abD932\nКарта: 4441 1144 8832 9912\nПодпишитесь на наш VIP канал со спутниковыми снимками прилетов: @secret_radar_vip",
+      "cleanedText": "🚨 КИЕВ и ОБЛАСТЬ! Внимание!\nГруппа БПЛА \"Shahed-136\" движется курсом на Белую Церковь / Васильков! Скорость ~185 км/ч.\n\nВнимание: Находитесь в укрытиях до отбоя!",
+      "threatType": "DRONE",
+      "severity": "CRITICAL",
+      "regions": [
+        "Киев",
+        "Белая Церковь",
+        "Васильков",
+        "Киевская обл."
+      ],
+      "vector": "Юг -> Северо-Запад, курс на Васильков",
+      "altitudeSpeed": "Высота 400м, скорость 185 км/ч",
+      "removedElements": [
+        {
+          "type": "donation",
+          "content": "Сбор на тепловизоры... монобанка: https://send.monobank.ua/jar/9X28abD932"
+        },
+        {
+          "type": "donation",
+          "content": "Карта: 4441 1144 8832 9912"
+        },
+        {
+          "type": "clickbait",
+          "content": "Подпишитесь на наш VIP канал со спутниковыми снимками"
+        },
+        {
+          "type": "mention",
+          "content": "@secret_radar_vip"
+        },
+        {
+          "type": "url",
+          "content": "https://send.monobank.ua/jar/9X28abD932"
+        }
+      ],
+      "isPureSpam": false,
+      "spamScore": 65,
+      "status": "FORWARDED",
+      "forwardedAt": 1791890214233,
+      "telegramMessageId": 1042
+    },
+    {
+      "id": "sample-2",
+      "timestamp": 1791889674233,
+      "sourceChannel": "@dnipro_monitor",
+      "originalText": "⚠️ Внимание! Активность вражеской тактической авиации Су-34 над акваторией Азовского моря!\nУгроза пуска управляемых авиабомб (КАБ) по Запорожскому и Днепропетровскому районам.\n\nРеклама: Лучшие повербанки и зарядные станции со скидкой 40% на t.me/eco_power_sales!\nЖми ссылку прямо сейчас, акция до полуночи!",
+      "cleanedText": "⚠️ Внимание! Активность тактической авиации Су-34 над акваторией Азовского моря!\nУгроза пуска управляемых авиабомб (КАБ) по Запорожскому и Днепропетровскому районам.",
+      "threatType": "AVIATION",
+      "severity": "HIGH",
+      "regions": [
+        "Запорожье",
+        "Днепр",
+        "Днепропетровская обл."
+      ],
+      "vector": "Азовское море -> Запорожское направление",
+      "altitudeSpeed": "Эшелон ~8500м",
+      "removedElements": [
+        {
+          "type": "url",
+          "content": "t.me/eco_power_sales"
+        },
+        {
+          "type": "clickbait",
+          "content": "Реклама: Лучшие повербанки... Жми ссылку прямо сейчас"
+        }
+      ],
+      "isPureSpam": false,
+      "spamScore": 48,
+      "status": "FORWARDED",
+      "forwardedAt": 1791889734233,
+      "telegramMessageId": 1041
+    },
+    {
+      "id": "sample-3",
+      "timestamp": 1791888894233,
+      "sourceChannel": "@trash_alerts_bot",
+      "originalText": "⚡️⚡️ ШОК! СРОЧНОЕ ЗАЯВЛЕНИЕ ПО РАКЕТНЫМ УДАРАМ!\nАдминистраторы слили точные координаты и график ракетных ударов на сегодня ночью!\n\nУспей посмотреть пока не удалили 👉 https://t.me/fake_secret_news_bot?start=ref12948\nДонаты админу на пиво: USDT TRC20: TL2w5pZ7qV1K4s9Yx7uJ2v",
+      "cleanedText": "",
+      "threatType": "INFO",
+      "severity": "LOW",
+      "regions": [],
+      "vector": "",
+      "removedElements": [
+        {
+          "type": "clickbait",
+          "content": "ШОК! СРОЧНОЕ ЗАЯВЛЕНИЕ... Успей посмотреть пока не удалили"
+        },
+        {
+          "type": "url",
+          "content": "https://t.me/fake_secret_news_bot?start=ref12948"
+        },
+        {
+          "type": "donation",
+          "content": "Донаты админу... USDT TRC20: TL2w5pZ7qV1K4s9Yx7uJ2v"
+        }
+      ],
+      "isPureSpam": true,
+      "spamScore": 100,
+      "status": "BLOCKED"
+    }
+  ],
+  "stats": {
+    "totalParsed": 0,
+    "totalBlocked": 0,
+    "totalCleaned": 0,
+    "totalForwarded": 0
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "RadarTG - Радар Тревог & Бот-Парсер",
+  "description": "Полноценный Telegram бот и радар тревог с веб-интерфейсом: автоматический парсинг, умная фильтрация рекламы, ссылок, донатов и спама, AI-анализ угроз и ретрансляция в каналы.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
