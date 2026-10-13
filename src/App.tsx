@@ -259,13 +259,65 @@ export default function App() {
 
   // Send Test message to Telegram channel
   const handleSendTestToChannel = async (channelId: string) => {
-    const res = await fetch('/api/bot/send-test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chatId: channelId }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Ошибка тестовой отправки');
+    const targetChat = channelId.trim();
+    const token = telegramConfig.botToken.trim();
+
+    try {
+      let res = await fetch('/api/bot/send-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ chatId: targetChat, botToken: token }),
+      });
+
+      if (res.status === 404) {
+        res = await fetch('/send-test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ chatId: targetChat, botToken: token }),
+        });
+      }
+
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Ошибка тестовой отправки');
+        return;
+      }
+    } catch (err: any) {
+      // If error is already a specific Telegram error (not HTML syntax error), rethrow it
+      if (err.message && !err.message.includes('JSON.parse') && !err.message.includes('<!doctype')) {
+        throw err;
+      }
+    }
+
+    // Direct Telegram API fallback from browser if backend returned HTML (e.g. unconfigured Netlify proxy)
+    if (token) {
+      const tgRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: targetChat,
+          text: `🟢 <b>RadarTG Bot: Проверка связи успешна!</b>\n\n🛡️ Связь между радаром и каналом установлена.\nФильтры рекламы и спама активны.\n\n⏱️ Время: ${new Date().toLocaleTimeString('ru-RU')}`,
+          parse_mode: 'HTML',
+        }),
+      });
+
+      const tgData = await tgRes.json();
+      if (!tgData.ok) {
+        let desc = tgData.description || 'Ошибка Telegram API';
+        if (desc.includes('chat not found')) {
+          desc = `Канал не найден (${targetChat}). Проверьте правильность @username или числового ID канала (для закрытых каналов ID должен начинаться с -100...).`;
+        } else if (desc.includes('bot is not a member') || desc.includes('have no rights to send a message')) {
+          desc = `Бот не является администратором канала. Добавьте бота в канал и выдайте ему право «Публикация сообщений»!`;
+        } else if (desc.includes('Unauthorized')) {
+          desc = `Неверный токен Telegram бота. Проверьте токен в @BotFather.`;
+        }
+        throw new Error(desc);
+      }
+      return;
+    }
+
+    throw new Error('Токен Telegram бота не настроен. Сохраните токен во вкладке «Telegram бот».');
   };
 
   // Save filter configuration
@@ -477,13 +529,48 @@ export default function App() {
                 if (!telegramConfig.botToken || !telegramConfig.targetChannelId) {
                   throw new Error('Telegram бот не настроен! Перейдите во вкладку «Telegram бот».');
                 }
-                const res = await fetch('/api/bot/send-test', {
+                const token = telegramConfig.botToken.trim();
+                const target = telegramConfig.targetChannelId.trim();
+
+                try {
+                  let res = await fetch('/api/bot/send-test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                    body: JSON.stringify({ customText: cleanedText, botToken: token, chatId: target }),
+                  });
+                  if (res.status === 404) {
+                    res = await fetch('/send-test', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                      body: JSON.stringify({ customText: cleanedText, botToken: token, chatId: target }),
+                    });
+                  }
+                  const ct = res.headers.get('content-type') || '';
+                  if (ct.includes('application/json')) {
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || 'Ошибка отправки');
+                    return;
+                  }
+                } catch (err: any) {
+                  if (err.message && !err.message.includes('JSON.parse') && !err.message.includes('<!doctype')) {
+                    throw err;
+                  }
+                }
+
+                // Direct browser fallback to Telegram Bot API
+                const tgRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ customText: cleanedText }),
+                  body: JSON.stringify({
+                    chat_id: target,
+                    text: cleanedText,
+                    parse_mode: 'HTML',
+                  }),
                 });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Ошибка отправки');
+                const tgData = await tgRes.json();
+                if (!tgData.ok) {
+                  throw new Error(tgData.description || 'Ошибка отправки в Telegram');
+                }
               }}
               hasTelegramBot={Boolean(telegramConfig.botToken && telegramConfig.targetChannelId)}
             />

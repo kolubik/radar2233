@@ -3,6 +3,37 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Suppress Vite HMR / WebSocket connection errors in preview environments
+      window.addEventListener('error', function(e) {
+        var msg = (e && e.message) ? String(e.message) : '';
+        var file = (e && e.filename) ? String(e.filename) : '';
+        if (
+          msg.includes('WebSocket') ||
+          msg.includes('ws:') ||
+          msg.includes('wss:') ||
+          msg.includes('moduleRunnerTransport') ||
+          file.includes('@vite/client')
+        ) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          return true;
+        }
+      }, true);
+      window.addEventListener('unhandledrejection', function(e) {
+        var reason = (e && e.reason) ? (e.reason.message || String(e.reason)) : '';
+        if (
+          reason.includes('WebSocket') ||
+          reason.includes('ws:') ||
+          reason.includes('wss:') ||
+          reason.includes('moduleRunnerTransport') ||
+          reason.includes('@vite/client')
+        ) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+        }
+      }, true);
+    </script>
     <title>RadarTG - Радар Тревог &amp; Бот-Парсер</title>
     <meta name="description" content="Полноценный Telegram бот и радар тревог с веб-интерфейсом: автоматический парсинг, умная фильтрация рекламы, ссылок, донатов и спама, AI-анализ угроз и ретрансляция в каналы." />
     <meta property="og:title" content="RadarTG - Радар Тревог &amp; Бот-Парсер" />

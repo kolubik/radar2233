@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "lastSaved": 1791907412117,
-  "savedDate": "2026-10-13T16:03:32.117Z",
+  "lastSaved": 1791910971105,
+  "savedDate": "2026-10-13T17:02:51.105Z",
   "filterConfig": {
     "removeUrls": true,
     "removeMentions": true,
@@ -34,10 +34,10 @@
     "ultraFastMode": true
   },
   "telegramConfig": {
-    "botToken": "12345:dummy_token",
-    "targetChannelId": "@test_chan",
-    "botUsername": null,
-    "botFirstName": null
+    "botToken": "8685098567:AAGx80d9wLXGcCtNy6RXyc15Awn9tMk7h6E",
+    "targetChannelId": "-1004375448936",
+    "botUsername": "radartreatjj_bot",
+    "botFirstName": "radartreatjj"
   },
   "parsingChannels": [
     {
@@ -180,13 +180,26 @@
       "searchCauseInChannels": true,
       "trackRouteAndSeverity": true,
       "autoPublishTelegram": false,
-      "triggerCount": 2,
-      "lastTriggeredAt": 1791884994233,
-      "lastFoundCause": "Заход 4х Шахедов со стороны Черного моря через Затоку/Маяки",
+      "triggerCount": 3,
+      "lastTriggeredAt": 1791910706339,
+      "lastFoundCause": "Превентивная тревога: обнаружено движение ударных средств в сторону сектора Одесса.",
       "lastAssignedLevel": "YELLOW"
     }
   ],
   "taskExecutionLogs": [
+    {
+      "id": "log-1791910706339-144",
+      "taskId": "task-odesa-sea-launches",
+      "taskName": "Одесса и Черноморск: Анализ пусков с моря и траектории через Затоку",
+      "timestamp": 1791910706339,
+      "targetRegion": "Одесса",
+      "triggerAlertId": "alert-1791910702213-401",
+      "foundCause": "Превентивная тревога: обнаружено движение ударных средств в сторону сектора Одесса.",
+      "routePath": "Подход к границам Одесса",
+      "threatLevel": "YELLOW",
+      "generatedTelegramPost": "<b>Розвідка України</b>\n\n<blockquote>📢 <b>odesa_live_monitor</b>\n⚠️ ОДЕССА и Черноморск!\nС моря через Затоку замечено 3 БПЛА \"Shahed-136\", идут курсом на Белгород-Днестровский / Маяки. Работает ПВО.</blockquote>\n\n🟡 <b>[СТУПЕНЬ УГРОЗЫ: ПОВЫШЕННЫЙ]</b>\n🧭 <b>Маршрут БПЛА:</b> Подход к границам Одесса\n🔍 <b>Причина тривоги:</b> Превентивная тревога: обнаружено движение ударных средств в сторону сектора Одесса.",
+      "publishedToTelegram": false
+    },
     {
       "id": "log-1",
       "taskId": "task-khmelnytskyi-radar",
@@ -202,6 +215,139 @@
     }
   ],
   "alertFeed": [
+    {
+      "id": "alert-1791910702213-401",
+      "timestamp": 1791910702213,
+      "sourceChannel": "@odesa_live_monitor",
+      "originalText": "⚠️ ОДЕССА и Черноморск!\nС моря через Затоку замечено 3 БПЛА \"Shahed-136\", идут курсом на Белгород-Днестровский / Маяки. Работает ПВО.\n\nРеклама: Казино 777 дарит 100 фриспинов без депозита! Жми сюда https://bet-bonus-super.xyz/reg прямо сейчас!",
+      "cleanedText": "⚠️ ОДЕССА и Черноморск!\nС моря через Затоку замечено 3 БПЛА \"Shahed-136\", идут курсом на Белгород-Днестровский / Маяки. Работает ПВО.",
+      "threatType": "DRONE",
+      "severity": "HIGH",
+      "regions": [
+        "Одесса"
+      ],
+      "vector": "курсом на Белгород-Днестровский / Маяки",
+      "removedElements": [
+        {
+          "type": "url",
+          "content": "https://bet-bonus-super.xyz/reg"
+        },
+        {
+          "type": "clickbait",
+          "content": "Реклама: Казино 777 дарит 100 фриспинов без депозита! Жми сюда   прямо сейчас!"
+        }
+      ],
+      "isPureSpam": false,
+      "spamScore": 45,
+      "status": "PENDING",
+      "originalTelegramMessageId": 48991,
+      "fromChatId": "-1001555812417",
+      "processingTimeMs": 0.26,
+      "engineUsed": "FAST_REGEX_ENGINE",
+      "threatCause": "Превентивная тревога: обнаружено движение ударных средств в сторону сектора Одесса.",
+      "routeTrajectory": "Подход к границам Одесса",
+      "colorThreatLevel": "YELLOW",
+      "quoteCommentary": "🟡 <b>[СТУПЕНЬ УГРОЗЫ: ПОВЫШЕННЫЙ]</b>\n🧭 <b>Маршрут БПЛА:</b> Подход к границам Одесса\n🔍 <b>Причина тривоги:</b> Превентивная тревога: обнаружено движение ударных средств в сторону сектора Одесса.",
+      "correlationTaskId": "task-odesa-sea-launches"
+    },
+    {
+      "id": "alert-1791910701744-765",
+      "timestamp": 1791910701744,
+      "sourceChannel": "@dnipro_alerts_24",
+      "originalText": "🟢 ДНЕПР и ОБЛАСТЬ - ОТБОЙ ВОЗДУШНОЙ ТРЕВОГИ!\nУгроза вражеских БПЛА миновала.\n\nПоддержите админа копеечкой на кофе:\nUSDT TRC20: TJ1a8N6K3pB9qW8yX4rZ\nВсем спокойной ночи!",
+      "cleanedText": "🟢 ДНЕПР и ОБЛАСТЬ - ОТБОЙ ВОЗДУШНОЙ ТРЕВОГИ!\nУгроза вражеских БПЛА миновала.\nПоддержите админа копеечкой\nUSDT TRC20: TJ1a8N6K3pB9qW8yX4rZ\nВсем спокойной ночи!",
+      "threatType": "DRONE",
+      "severity": "HIGH",
+      "regions": [
+        "Днепр"
+      ],
+      "vector": "Курс в сектор Днепр",
+      "removedElements": [
+        {
+          "type": "donation",
+          "content": "на кофе:"
+        }
+      ],
+      "isPureSpam": false,
+      "spamScore": 45,
+      "status": "PENDING",
+      "originalTelegramMessageId": 48334,
+      "fromChatId": "-1001802868920",
+      "processingTimeMs": 0.57,
+      "engineUsed": "FAST_REGEX_ENGINE"
+    },
+    {
+      "id": "alert-1791910701483-819",
+      "timestamp": 1791910701483,
+      "sourceChannel": "@dnipro_alerts_24",
+      "originalText": "🟢 ДНЕПР и ОБЛАСТЬ - ОТБОЙ ВОЗДУШНОЙ ТРЕВОГИ!\nУгроза вражеских БПЛА миновала.\n\nПоддержите админа копеечкой на кофе:\nUSDT TRC20: TJ1a8N6K3pB9qW8yX4rZ\nВсем спокойной ночи!",
+      "cleanedText": "🟢 ДНЕПР и ОБЛАСТЬ - ОТБОЙ ВОЗДУШНОЙ ТРЕВОГИ!\nУгроза вражеских БПЛА миновала.\nПоддержите админа копеечкой\nUSDT TRC20: TJ1a8N6K3pB9qW8yX4rZ\nВсем спокойной ночи!",
+      "threatType": "DRONE",
+      "severity": "HIGH",
+      "regions": [
+        "Днепр"
+      ],
+      "vector": "Курс в сектор Днепр",
+      "removedElements": [
+        {
+          "type": "donation",
+          "content": "на кофе:"
+        }
+      ],
+      "isPureSpam": false,
+      "spamScore": 45,
+      "status": "PENDING",
+      "originalTelegramMessageId": 62548,
+      "fromChatId": "-1001973190978",
+      "processingTimeMs": 0.95,
+      "engineUsed": "FAST_REGEX_ENGINE"
+    },
+    {
+      "id": "alert-1791910699674-307",
+      "timestamp": 1791910699674,
+      "sourceChannel": "@kharkiv_operational",
+      "originalText": "🔴 ХАРЬКОВ! Ракетная опасность!\nЗафиксированы пуски баллистических ракет С-300 / Искандер-М из Белгородской области!\nВремя подлета: 1.5 - 2 минуты!\n\nВсем оставаться в безопасных местах!\n\n🔥 ШОК ВИДЕО ПЕРВЫХ ПРИЛЕТОВ БЕЗ ЦЕНЗУРЫ В НАШЕМ РЕЗЕРВНОМ КАНАЛЕ:\n👉 t.me/kharkiv_rezerv_vip_news?start=alert\n💳 Сбор на ремонт скорой помощи: 5375 4141 9901 8832\nМонобанка: send.monobank.ua/jar/KharkivHelp77",
+      "cleanedText": "🔴 ХАРЬКОВ! Ракетная опасность!\nЗафиксированы пуски баллистических ракет С-300 / Искандер-М из Белгородской области!\nВремя подлета: 1.5 - 2 минуты!\nВсем оставаться в безопасных местах!\n?start=alert\n💳",
+      "threatType": "BALLISTIC",
+      "severity": "CRITICAL",
+      "regions": [
+        "Харьков"
+      ],
+      "vector": "Курс в сектор Харьков",
+      "removedElements": [
+        {
+          "type": "url",
+          "content": "t.me/kharkiv_rezerv_vip_news"
+        },
+        {
+          "type": "donation",
+          "content": "Карта: 5375 4141 9901 8832"
+        },
+        {
+          "type": "donation",
+          "content": "Монобанка: send.monobank.ua/jar"
+        },
+        {
+          "type": "donation",
+          "content": "Сбор на ремонт скорой помощи:"
+        },
+        {
+          "type": "donation",
+          "content": "Монобанка:  /KharkivHelp77"
+        },
+        {
+          "type": "clickbait",
+          "content": "ШОК ВИДЕО ПЕРВЫХ ПРИЛЕТОВ БЕЗ ЦЕНЗУРЫ В НАШЕМ РЕЗЕРВНОМ КАНАЛЕ:"
+        }
+      ],
+      "isPureSpam": false,
+      "spamScore": 49,
+      "status": "PENDING",
+      "originalTelegramMessageId": 25294,
+      "fromChatId": "-1001273356445",
+      "processingTimeMs": 4.36,
+      "engineUsed": "FAST_REGEX_ENGINE"
+    },
     {
       "id": "sample-1",
       "timestamp": 1791890154233,
@@ -307,9 +453,9 @@
     }
   ],
   "stats": {
-    "totalParsed": 0,
+    "totalParsed": 4,
     "totalBlocked": 0,
-    "totalCleaned": 0,
+    "totalCleaned": 4,
     "totalForwarded": 0
   }
 }

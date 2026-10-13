@@ -1,6 +1,6 @@
 --
 -- RadarTG Local Relational SQLite Database Dump
--- Exported: 2026-10-13T16:03:32.117Z
+-- Exported: 2026-10-13T17:02:51.106Z
 -- Host/PC: Local SQLite Engine
 --
 PRAGMA foreign_keys = OFF;
@@ -46,6 +46,10 @@ CREATE TABLE alerts (
   cleaned_text TEXT
 );
 -- Data for: alerts
+INSERT INTO alerts (id, timestamp, source_channel, threat_type, severity, regions, vector, status, spam_score, is_pure_spam, processing_time_ms, cleaned_text) VALUES ('alert-1791910702213-401', 1791910702213, '@odesa_live_monitor', 'DRONE', 'HIGH', 'Одесса', 'курсом на Белгород-Днестровский / Маяки', 'PENDING', 45, 0, 0.26, '⚠️ ОДЕССА и Черноморск!\nС моря через Затоку замечено 3 БПЛА "Shahed-136", идут курсом на Белгород-Днестровский / Маяки. Работает ПВО.');
+INSERT INTO alerts (id, timestamp, source_channel, threat_type, severity, regions, vector, status, spam_score, is_pure_spam, processing_time_ms, cleaned_text) VALUES ('alert-1791910701744-765', 1791910701744, '@dnipro_alerts_24', 'DRONE', 'HIGH', 'Днепр', 'Курс в сектор Днепр', 'PENDING', 45, 0, 0.57, '🟢 ДНЕПР и ОБЛАСТЬ - ОТБОЙ ВОЗДУШНОЙ ТРЕВОГИ!\nУгроза вражеских БПЛА миновала.\nПоддержите админа копеечкой\nUSDT TRC20: TJ1a8N6K3pB9qW8yX4rZ\nВсем спокой');
+INSERT INTO alerts (id, timestamp, source_channel, threat_type, severity, regions, vector, status, spam_score, is_pure_spam, processing_time_ms, cleaned_text) VALUES ('alert-1791910701483-819', 1791910701483, '@dnipro_alerts_24', 'DRONE', 'HIGH', 'Днепр', 'Курс в сектор Днепр', 'PENDING', 45, 0, 0.95, '🟢 ДНЕПР и ОБЛАСТЬ - ОТБОЙ ВОЗДУШНОЙ ТРЕВОГИ!\nУгроза вражеских БПЛА миновала.\nПоддержите админа копеечкой\nUSDT TRC20: TJ1a8N6K3pB9qW8yX4rZ\nВсем спокой');
+INSERT INTO alerts (id, timestamp, source_channel, threat_type, severity, regions, vector, status, spam_score, is_pure_spam, processing_time_ms, cleaned_text) VALUES ('alert-1791910699674-307', 1791910699674, '@kharkiv_operational', 'BALLISTIC', 'CRITICAL', 'Харьков', 'Курс в сектор Харьков', 'PENDING', 49, 0, 4.36, '🔴 ХАРЬКОВ! Ракетная опасность!\nЗафиксированы пуски баллистических ракет С-300 / Искандер-М из Белгородской области!\nВремя подлета: 1.5 - 2 минуты!\nВс');
 INSERT INTO alerts (id, timestamp, source_channel, threat_type, severity, regions, vector, status, spam_score, is_pure_spam, processing_time_ms, cleaned_text) VALUES ('sample-1', 1791890154233, '@kyiv_alerts_oper', 'DRONE', 'CRITICAL', 'Киев, Белая Церковь, Васильков, Киевская обл.', 'Юг -> Северо-Запад, курс на Васильков', 'FORWARDED', 65, 0, 0.8, '🚨 КИЕВ и ОБЛАСТЬ! Внимание!\nГруппа БПЛА "Shahed-136" движется курсом на Белую Церковь / Васильков! Скорость ~185 км/ч.\n\nВнимание: Находитесь в укрыти');
 INSERT INTO alerts (id, timestamp, source_channel, threat_type, severity, regions, vector, status, spam_score, is_pure_spam, processing_time_ms, cleaned_text) VALUES ('sample-2', 1791889674233, '@dnipro_monitor', 'AVIATION', 'HIGH', 'Запорожье, Днепр, Днепропетровская обл.', 'Азовское море -> Запорожское направление', 'FORWARDED', 48, 0, 0.8, '⚠️ Внимание! Активность тактической авиации Су-34 над акваторией Азовского моря!\nУгроза пуска управляемых авиабомб (КАБ) по Запорожскому и Днепропетро');
 INSERT INTO alerts (id, timestamp, source_channel, threat_type, severity, regions, vector, status, spam_score, is_pure_spam, processing_time_ms, cleaned_text) VALUES ('sample-3', 1791888894233, '@trash_alerts_bot', 'INFO', 'LOW', '', '', 'BLOCKED', 100, 1, 0.8, '');

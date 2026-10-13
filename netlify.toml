@@ -49,6 +49,25 @@
   status = 200
   force = true
 
+# Telegram Test Send message endpoint
+[[redirects]]
+  from = "/send-test"
+  to = "/.netlify/functions/send-test"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/send-test"
+  to = "/.netlify/functions/send-test"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/bot/send-test"
+  to = "/.netlify/functions/send-test"
+  status = 200
+  force = true
+
 # General /api/* routing to netlify/functions/*
 [[redirects]]
   from = "/api/*"

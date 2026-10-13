@@ -11,6 +11,11 @@
 /api/feed            /.netlify/functions/feed        200!
 /api/radar/feed      /.netlify/functions/feed        200!
 
+# Test Send message endpoint
+/send-test           /.netlify/functions/send-test   200!
+/api/send-test       /.netlify/functions/send-test   200!
+/api/bot/send-test   /.netlify/functions/send-test   200!
+
 # General API wildcard
 /api/*               /.netlify/functions/:splat      200
 

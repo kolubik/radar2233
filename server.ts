@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -1445,17 +1446,17 @@ app.post('/api/bot/toggle-polling', (req: Request, res: Response) => {
 });
 
 // Test send message to Telegram channel
-app.post('/api/bot/send-test', async (req: Request, res: Response) => {
+app.post(['/api/bot/send-test', '/send-test', '/api/send-test'], async (req: Request, res: Response) => {
   try {
-    const { chatId, customText } = req.body;
-    const target = chatId || telegramConfig.targetChannelId;
-    const token = telegramConfig.botToken;
+    const { chatId, customText, botToken } = req.body;
+    const target = (chatId || telegramConfig.targetChannelId || '').trim();
+    const token = (botToken || telegramConfig.botToken || '').trim();
 
     if (!token) {
-      return res.status(400).json({ error: 'Токен Telegram бота не настроен' });
+      return res.status(400).json({ success: false, error: 'Токен Telegram бота не настроен' });
     }
     if (!target) {
-      return res.status(400).json({ error: 'Укажите ID целевого канала или @имя_канала' });
+      return res.status(400).json({ success: false, error: 'Укажите ID целевого канала или @имя_канала' });
     }
 
     const testText =
@@ -1469,7 +1470,17 @@ app.post('/api/bot/send-test', async (req: Request, res: Response) => {
       chat: tgResult.chat,
     });
   } catch (err: any) {
-    res.status(400).json({ success: false, error: err.message });
+    let readableError = err.message || 'Ошибка Telegram API';
+    if (readableError.includes('chat not found')) {
+      readableError = `Канал не найден. Проверьте @username или числовой ID канала (-100...).`;
+    } else if (
+      readableError.includes('kicked') ||
+      readableError.includes('bot is not a member') ||
+      readableError.includes('have no rights to send a message')
+    ) {
+      readableError = `Бот не состоит в канале или был удален. Убедитесь, что в администраторы добавлен именно этот бот, и выдайте право «Публикация сообщений».`;
+    }
+    res.status(400).json({ success: false, error: readableError });
   }
 });
 
@@ -2552,12 +2563,14 @@ app.post('/api/bot/webhook', async (req: Request, res: Response) => {
 
 // Mount Vite in development mode or serve static files in production
 async function startServer() {
+  const httpServer = http.createServer(app);
+
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: process.env.DISABLE_HMR === 'true' ? false : undefined,
+        hmr: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer },
       },
       appType: 'spa',
     });
@@ -2569,12 +2582,12 @@ async function startServer() {
     });
   }
 
-  const server = app.listen(Number(PORT), '0.0.0.0', () => {
+  httpServer.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`[RadarTG] Server running on http://0.0.0.0:${PORT}`);
   });
 
   const shutdown = () => {
-    server.close(() => {
+    httpServer.close(() => {
       process.exit(0);
     });
   };

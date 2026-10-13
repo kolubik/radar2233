@@ -24,7 +24,7 @@ interface BotSetupTabProps {
   onUpdateConfig: (botToken: string, targetChannelId: string) => Promise<void>;
   onVerifyBot: (botToken: string) => Promise<{ username: string; firstName: string }>;
   onTogglePolling: (enable: boolean) => Promise<void>;
-  onSendTest: (channelId: string) => Promise<void>;
+  onSendTest: (channelId: string, botToken?: string) => Promise<void>;
 }
 
 export const BotSetupTab: React.FC<BotSetupTabProps> = ({
@@ -58,7 +58,7 @@ export const BotSetupTab: React.FC<BotSetupTabProps> = ({
       const botInfo = await onVerifyBot(tokenInput.trim());
       setStatusMessage({
         type: 'success',
-        text: `Бот @${botInfo.username} (${botInfo.firstName}) успешно авторизован!`,
+        text: `Бот @${botInfo.username} (${botInfo.firstName}) успешно авторизован! Добавьте именно @${botInfo.username} в канал.`,
       });
       tacticalAudio.playCleanSound();
     } catch (err: any) {
@@ -74,11 +74,18 @@ export const BotSetupTab: React.FC<BotSetupTabProps> = ({
       return;
     }
 
+    if (!tokenInput.trim()) {
+      setStatusMessage({ type: 'error', text: 'Укажите токен бота в поле TELEGRAM BOT TOKEN' });
+      return;
+    }
+
     setIsSendingTest(true);
     setStatusMessage(null);
 
     try {
-      await onSendTest(channelInput.trim());
+      // Автоматически синхронизируем введенный токен перед отправкой теста
+      await onUpdateConfig(tokenInput.trim(), channelInput.trim());
+      await onSendTest(channelInput.trim(), tokenInput.trim());
       setStatusMessage({
         type: 'success',
         text: 'Тестовое оповещение успешно доставлено в Telegram канал!',
@@ -87,7 +94,7 @@ export const BotSetupTab: React.FC<BotSetupTabProps> = ({
     } catch (err: any) {
       setStatusMessage({
         type: 'error',
-        text: `Ошибка отправки в канал: ${err.message}. Убедитесь, что бот добавлен администратором канала с правом публикации!`,
+        text: `Ошибка отправки в канал: ${err.message}`,
       });
     } finally {
       setIsSendingTest(false);
@@ -199,9 +206,16 @@ export const BotSetupTab: React.FC<BotSetupTabProps> = ({
                 {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-            <p className="text-[11px] text-slate-500 font-mono">
-              Токен надежно сохраняется на сервере и используется для проверки и отправки очищенных сводок.
-            </p>
+            {config.botUsername ? (
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-950/40 border border-emerald-800/60 text-xs text-emerald-300 font-mono">
+                <Bot className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Юзернейм бота: <b className="text-white underline">@{config.botUsername}</b> ({config.botFirstName || 'Radar Bot'})</span>
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-500 font-mono">
+                Токен надежно сохраняется на сервере и используется для проверки и отправки очищенных сводок.
+              </p>
+            )}
           </div>
 
           {/* Target Channel Field */}
@@ -282,7 +296,7 @@ export const BotSetupTab: React.FC<BotSetupTabProps> = ({
                 4
               </span>
               <span>
-                Добавьте вашего бота в администраторы целевого канала с правом <b>«Публикация сообщений»</b>.
+                Добавьте именно вашего бота {config.botUsername ? <span className="text-emerald-300 font-bold bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-700">@{config.botUsername}</span> : '(его юзернейм из шага 2)'} в администраторы целевого канала с правом <b>«Публикация сообщений»</b>.
               </span>
             </li>
             <li className="flex items-start gap-2.5">
