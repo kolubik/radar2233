@@ -1,6 +1,6 @@
 --
 -- RadarTG Local Relational SQLite Database Dump
--- Exported: 2026-10-13T11:19:54.235Z
+-- Exported: 2026-10-13T16:03:32.117Z
 -- Host/PC: Local SQLite Engine
 --
 PRAGMA foreign_keys = OFF;

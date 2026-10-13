@@ -1,0 +1,64 @@
+# Netlify Configuration for RadarTG Web App
+[build]
+  publish = "dist"
+  command = "npm run build"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# -------------------------------------------------------------
+# 1. API & Netlify Serverless Functions Rewrites (High Priority)
+# -------------------------------------------------------------
+
+# Telegram Bot configuration endpoint
+[[redirects]]
+  from = "/configure"
+  to = "/.netlify/functions/configure"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/configure"
+  to = "/.netlify/functions/configure"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/bot/configure"
+  to = "/.netlify/functions/configure"
+  status = 200
+  force = true
+
+# Radar Threat Feed endpoint
+[[redirects]]
+  from = "/feed"
+  to = "/.netlify/functions/feed"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/feed"
+  to = "/.netlify/functions/feed"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/radar/feed"
+  to = "/.netlify/functions/feed"
+  status = 200
+  force = true
+
+# General /api/* routing to netlify/functions/*
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# -------------------------------------------------------------
+# 2. Single Page Application (SPA) Fallback (Must be last)
+# -------------------------------------------------------------
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

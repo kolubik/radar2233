@@ -1370,7 +1370,7 @@ app.get('/api/bot/status', (req: Request, res: Response) => {
   });
 });
 
-app.post('/api/bot/configure', async (req: Request, res: Response) => {
+app.post(['/api/bot/configure', '/configure', '/api/configure'], async (req: Request, res: Response) => {
   try {
     const { botToken, targetChannelId } = req.body;
     if (botToken !== undefined) telegramConfig.botToken = botToken.trim();
@@ -1549,7 +1549,7 @@ app.post('/api/filters/test', async (req: Request, res: Response) => {
 });
 
 // 4. Radar Feed & History
-app.get('/api/radar/feed', (req: Request, res: Response) => {
+app.get(['/api/radar/feed', '/feed', '/api/feed'], (req: Request, res: Response) => {
   res.json({
     feed: alertFeed,
     stats,

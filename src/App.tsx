@@ -9,6 +9,7 @@ import { AnalyticsTab } from './components/AnalyticsTab.tsx';
 import { ChannelsTab } from './components/ChannelsTab.tsx';
 import { ManualIngestModal } from './components/ManualIngestModal.tsx';
 import { DatabaseModal } from './components/DatabaseModal.tsx';
+import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { tacticalAudio } from './utils/audio.ts';
 import {
   Radio,
@@ -86,10 +87,14 @@ export default function App() {
   // Fetch feed & stats
   const fetchFeed = useCallback(async () => {
     try {
-      const res = await fetch('/api/radar/feed');
-      if (res.ok) {
+      let res = await fetch('/api/radar/feed');
+      if (res.status === 404) {
+        res = await fetch('/feed');
+      }
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
         const data = await res.json();
-        setAlerts(data.feed || []);
+        setAlerts(data.feed || (Array.isArray(data) ? data : []));
         if (data.stats) setStats(data.stats);
       }
     } catch (err) {
@@ -196,14 +201,29 @@ export default function App() {
 
   // Update Bot Token and target channel
   const handleUpdateBotConfig = async (botToken: string, targetChannelId: string) => {
-    const res = await fetch('/api/bot/configure', {
+    let res = await fetch('/api/bot/configure', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ botToken, targetChannelId }),
     });
+
+    // Fallback to /configure if /api/bot/configure returned 404
+    if (res.status === 404) {
+      res = await fetch('/configure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ botToken, targetChannelId }),
+      });
+    }
+
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Сервер вернул HTML вместо JSON (${res.status} ${res.statusText}). Проверьте redirects в netlify.toml.`);
+    }
+
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Ошибка настройки бота');
-    setTelegramConfig(data.config);
+    if (data.config) setTelegramConfig(data.config);
   };
 
   // Verify Telegram Bot
@@ -401,86 +421,94 @@ export default function App() {
           ))}
         </div>
 
-        {/* Tab 1: Live Feed (Clean, minimal, direct) */}
-        {activeTab === 'feed' && (
-          <ThreatFeed
-            alerts={alerts}
-            filterConfig={filterConfig}
-            targetChannelId={telegramConfig.targetChannelId}
-            hasBotToken={Boolean(telegramConfig.botToken)}
-            onBroadcast={handleBroadcastAlert}
-            onTestInSandbox={(text) => {
-              setSandboxPresetText(text);
-              setActiveTab('sandbox');
-            }}
-            selectedAlertId={selectedAlertId}
-            onSelectAlert={(alert) => setSelectedAlertId(alert.id)}
-            isBroadcastingId={isBroadcastingId}
-            onRefreshFeed={fetchFeed}
-          />
-        )}
+        {/* Tab Content wrapped in Tactical Error Boundary */}
+        <ErrorBoundary
+          key={activeTab}
+          moduleName={`Вкладка «${tabs.find((t) => t.id === activeTab)?.label || activeTab}»`}
+          fallbackTitle={`Сбой в модуле «${tabs.find((t) => t.id === activeTab)?.label || activeTab}»`}
+          onNavigateHome={() => setActiveTab('feed')}
+        >
+          {/* Tab 1: Live Feed (Clean, minimal, direct) */}
+          {activeTab === 'feed' && (
+            <ThreatFeed
+              alerts={alerts}
+              filterConfig={filterConfig}
+              targetChannelId={telegramConfig.targetChannelId}
+              hasBotToken={Boolean(telegramConfig.botToken)}
+              onBroadcast={handleBroadcastAlert}
+              onTestInSandbox={(text) => {
+                setSandboxPresetText(text);
+                setActiveTab('sandbox');
+              }}
+              selectedAlertId={selectedAlertId}
+              onSelectAlert={(alert) => setSelectedAlertId(alert.id)}
+              isBroadcastingId={isBroadcastingId}
+              onRefreshFeed={fetchFeed}
+            />
+          )}
 
-        {/* Tab: Analytics & Threat Metrics */}
-        {activeTab === 'analytics' && (
-          <AnalyticsTab alerts={alerts} onSimulateBurst={handleSimulateBurst} />
-        )}
+          {/* Tab: Analytics & Threat Metrics */}
+          {activeTab === 'analytics' && (
+            <AnalyticsTab alerts={alerts} onSimulateBurst={handleSimulateBurst} />
+          )}
 
-        {/* Tab 2: Tactical Tasks & Scenarios Engine */}
-        {activeTab === 'tasks' && (
-          <TacticalTasksTab
-            onNotify={(msg, isErr) => showToast(msg, isErr)}
-            onRefreshFeed={fetchFeed}
-            hasBotToken={Boolean(telegramConfig.botToken)}
-          />
-        )}
+          {/* Tab 2: Tactical Tasks & Scenarios Engine */}
+          {activeTab === 'tasks' && (
+            <TacticalTasksTab
+              onNotify={(msg, isErr) => showToast(msg, isErr)}
+              onRefreshFeed={fetchFeed}
+              hasBotToken={Boolean(telegramConfig.botToken)}
+            />
+          )}
 
-        {/* Tab 3: Filter & Template Settings */}
-        {activeTab === 'filters' && (
-          <FilterConfigTab
-            config={filterConfig}
-            onSaveConfig={handleSaveFilterConfig}
-          />
-        )}
+          {/* Tab 3: Filter & Template Settings */}
+          {activeTab === 'filters' && (
+            <FilterConfigTab
+              config={filterConfig}
+              onSaveConfig={handleSaveFilterConfig}
+            />
+          )}
 
-        {/* Tab 4: Filter Sandbox */}
-        {activeTab === 'sandbox' && (
-          <FilterSandbox
-            initialText={sandboxPresetText}
-            onSendTestToBot={async (cleanedText) => {
-              if (!telegramConfig.botToken || !telegramConfig.targetChannelId) {
-                throw new Error('Telegram бот не настроен! Перейдите во вкладку «Telegram бот».');
-              }
-              const res = await fetch('/api/bot/send-test', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ customText: cleanedText }),
-              });
-              const data = await res.json();
-              if (!res.ok) throw new Error(data.error || 'Ошибка отправки');
-            }}
-            hasTelegramBot={Boolean(telegramConfig.botToken && telegramConfig.targetChannelId)}
-          />
-        )}
+          {/* Tab 4: Filter Sandbox */}
+          {activeTab === 'sandbox' && (
+            <FilterSandbox
+              initialText={sandboxPresetText}
+              onSendTestToBot={async (cleanedText) => {
+                if (!telegramConfig.botToken || !telegramConfig.targetChannelId) {
+                  throw new Error('Telegram бот не настроен! Перейдите во вкладку «Telegram бот».');
+                }
+                const res = await fetch('/api/bot/send-test', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ customText: cleanedText }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Ошибка отправки');
+              }}
+              hasTelegramBot={Boolean(telegramConfig.botToken && telegramConfig.targetChannelId)}
+            />
+          )}
 
-        {/* Tab 5: Telegram Bot Integration */}
-        {activeTab === 'bot' && (
-          <BotSetupTab
-            config={telegramConfig}
-            stats={stats}
-            onUpdateConfig={handleUpdateBotConfig}
-            onVerifyBot={handleVerifyBot}
-            onTogglePolling={handleTogglePolling}
-            onSendTest={handleSendTestToChannel}
-          />
-        )}
+          {/* Tab 5: Telegram Bot Integration */}
+          {activeTab === 'bot' && (
+            <BotSetupTab
+              config={telegramConfig}
+              stats={stats}
+              onUpdateConfig={handleUpdateBotConfig}
+              onVerifyBot={handleVerifyBot}
+              onTogglePolling={handleTogglePolling}
+              onSendTest={handleSendTestToChannel}
+            />
+          )}
 
-        {/* Tab 6: Channels for Parsing & Local SQL Database */}
-        {activeTab === 'channels' && (
-          <ChannelsTab
-            onRefreshFeed={fetchFeed}
-            onToast={(msg, isErr) => showToast(msg, isErr)}
-          />
-        )}
+          {/* Tab 6: Channels for Parsing & Local SQL Database */}
+          {activeTab === 'channels' && (
+            <ChannelsTab
+              onRefreshFeed={fetchFeed}
+              onToast={(msg, isErr) => showToast(msg, isErr)}
+            />
+          )}
+        </ErrorBoundary>
       </main>
 
       {/* Manual Ingest Modal */}

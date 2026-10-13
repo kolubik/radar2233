@@ -1,0 +1,18 @@
+# Netlify Redirects file for RadarTG
+# Note: 200! means force rewrite to function
+
+# Bot Configuration Endpoint
+/configure           /.netlify/functions/configure   200!
+/api/configure       /.netlify/functions/configure   200!
+/api/bot/configure   /.netlify/functions/configure   200!
+
+# Radar Feed Endpoint
+/feed                /.netlify/functions/feed        200!
+/api/feed            /.netlify/functions/feed        200!
+/api/radar/feed      /.netlify/functions/feed        200!
+
+# General API wildcard
+/api/*               /.netlify/functions/:splat      200
+
+# Single Page Application (SPA) routing fallback
+/*                   /index.html                     200

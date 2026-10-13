@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "lastSaved": 1791890394234,
-  "savedDate": "2026-10-13T11:19:54.234Z",
+  "lastSaved": 1791907412117,
+  "savedDate": "2026-10-13T16:03:32.117Z",
   "filterConfig": {
     "removeUrls": true,
     "removeMentions": true,
@@ -34,8 +34,8 @@
     "ultraFastMode": true
   },
   "telegramConfig": {
-    "botToken": "",
-    "targetChannelId": "",
+    "botToken": "12345:dummy_token",
+    "targetChannelId": "@test_chan",
     "botUsername": null,
     "botFirstName": null
   },
