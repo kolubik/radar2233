@@ -2,6 +2,11 @@ import React, { useState } from 'react';
 import { TelegramBotConfig, SystemStats } from '../types.ts';
 import { tacticalAudio } from '../utils/audio.ts';
 import {
+  cleanTelegramBotToken,
+  cleanTelegramChatId,
+  formatTelegramApiError,
+} from '../utils/api.ts';
+import {
   Bot,
   Send,
   CheckCircle2,
@@ -45,7 +50,12 @@ export const BotSetupTab: React.FC<BotSetupTabProps> = ({
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const handleSaveAndVerify = async () => {
-    if (!tokenInput.trim()) {
+    const cleanToken = cleanTelegramBotToken(tokenInput);
+    const cleanChannel = cleanTelegramChatId(channelInput);
+    setTokenInput(cleanToken);
+    setChannelInput(cleanChannel);
+
+    if (!cleanToken) {
       setStatusMessage({ type: 'error', text: 'Пожалуйста, введите токен бота' });
       return;
     }
@@ -54,27 +64,35 @@ export const BotSetupTab: React.FC<BotSetupTabProps> = ({
     setStatusMessage(null);
 
     try {
-      await onUpdateConfig(tokenInput.trim(), channelInput.trim());
-      const botInfo = await onVerifyBot(tokenInput.trim());
+      await onUpdateConfig(cleanToken, cleanChannel);
+      const botInfo = await onVerifyBot(cleanToken);
       setStatusMessage({
         type: 'success',
-        text: `Бот @${botInfo.username} (${botInfo.firstName}) успешно авторизован! Добавьте именно @${botInfo.username} в канал.`,
+        text: `Бот @${botInfo.username} (${botInfo.firstName}) успешно авторизован в Telegram!\nТеперь добавьте именно @${botInfo.username} в администраторы вашего канала.`,
       });
       tacticalAudio.playCleanSound();
     } catch (err: any) {
-      setStatusMessage({ type: 'error', text: err.message || 'Ошибка проверки токена' });
+      setStatusMessage({
+        type: 'error',
+        text: formatTelegramApiError(err.message, { token: cleanToken }),
+      });
     } finally {
       setIsVerifying(false);
     }
   };
 
   const handleTestBroadcast = async () => {
-    if (!channelInput.trim()) {
+    const cleanToken = cleanTelegramBotToken(tokenInput);
+    const cleanChannel = cleanTelegramChatId(channelInput);
+    setTokenInput(cleanToken);
+    setChannelInput(cleanChannel);
+
+    if (!cleanChannel) {
       setStatusMessage({ type: 'error', text: 'Укажите ID целевого канала или @имя_канала' });
       return;
     }
 
-    if (!tokenInput.trim()) {
+    if (!cleanToken) {
       setStatusMessage({ type: 'error', text: 'Укажите токен бота в поле TELEGRAM BOT TOKEN' });
       return;
     }
@@ -83,9 +101,8 @@ export const BotSetupTab: React.FC<BotSetupTabProps> = ({
     setStatusMessage(null);
 
     try {
-      // Автоматически синхронизируем введенный токен перед отправкой теста
-      await onUpdateConfig(tokenInput.trim(), channelInput.trim());
-      await onSendTest(channelInput.trim(), tokenInput.trim());
+      await onUpdateConfig(cleanToken, cleanChannel);
+      await onSendTest(cleanChannel, cleanToken);
       setStatusMessage({
         type: 'success',
         text: 'Тестовое оповещение успешно доставлено в Telegram канал!',
@@ -94,7 +111,7 @@ export const BotSetupTab: React.FC<BotSetupTabProps> = ({
     } catch (err: any) {
       setStatusMessage({
         type: 'error',
-        text: `Ошибка отправки в канал: ${err.message}`,
+        text: formatTelegramApiError(err.message, { token: cleanToken, channel: cleanChannel }),
       });
     } finally {
       setIsSendingTest(false);
@@ -169,7 +186,7 @@ export const BotSetupTab: React.FC<BotSetupTabProps> = ({
           ) : (
             <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
           )}
-          <span>{statusMessage.text}</span>
+          <span className="whitespace-pre-line leading-relaxed flex-1">{statusMessage.text}</span>
         </div>
       )}
 

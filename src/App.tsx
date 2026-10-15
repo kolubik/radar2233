@@ -10,6 +10,12 @@ import { ChannelsTab } from './components/ChannelsTab.tsx';
 import { ManualIngestModal } from './components/ManualIngestModal.tsx';
 import { DatabaseModal } from './components/DatabaseModal.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
+import {
+  safeFetchJson,
+  cleanTelegramBotToken,
+  cleanTelegramChatId,
+  formatTelegramApiError,
+} from './utils/api.ts';
 import { tacticalAudio } from './utils/audio.ts';
 import {
   Radio,
@@ -106,21 +112,19 @@ export default function App() {
   const fetchInitialData = useCallback(async () => {
     try {
       const [botRes, filterRes] = await Promise.all([
-        fetch('/api/bot/status'),
-        fetch('/api/filters/config'),
+        safeFetchJson('/api/bot/status'),
+        safeFetchJson('/api/filters/config'),
       ]);
 
-      if (botRes.ok) {
-        const botData = await botRes.json();
-        if (botData.config) setTelegramConfig(botData.config);
-        if (botData.stats) setStats(botData.stats);
+      if (botRes.ok && botRes.data) {
+        if (botRes.data.config) setTelegramConfig(botRes.data.config);
+        if (botRes.data.stats) setStats(botRes.data.stats);
       }
 
-      if (filterRes.ok) {
-        const filterData = await filterRes.json();
-        if (filterData.config) {
-          setFilterConfig(filterData.config);
-          setSoundEnabled(filterData.config.soundAlerts);
+      if (filterRes.ok && filterRes.data) {
+        if (filterRes.data.config) {
+          setFilterConfig(filterRes.data.config);
+          setSoundEnabled(filterRes.data.config.soundAlerts);
         }
       }
 
@@ -132,7 +136,8 @@ export default function App() {
 
   useEffect(() => {
     fetchInitialData();
-    const interval = setInterval(fetchFeed, 4000);
+    // Fast real-time polling (1.8s) for live Telegram radar feed
+    const interval = setInterval(fetchFeed, 1800);
     return () => clearInterval(interval);
   }, [fetchInitialData, fetchFeed]);
 
@@ -140,13 +145,17 @@ export default function App() {
   const handleBroadcastAlert = async (alertId: string) => {
     setIsBroadcastingId(alertId);
     try {
-      const res = await fetch(`/api/radar/broadcast/${alertId}`, {
+      const res = await safeFetchJson(`/api/radar/broadcast/${alertId}`, {
         method: 'POST',
       });
-      const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Ошибка отправки в канал');
+        throw new Error(
+          formatTelegramApiError(res.error, {
+            token: telegramConfig.botToken,
+            channel: telegramConfig.targetChannelId,
+          })
+        );
       }
 
       tacticalAudio.playCleanSound();
@@ -163,14 +172,13 @@ export default function App() {
   const handleSimulateBurst = async () => {
     setIsSimulatingBurst(true);
     try {
-      const res = await fetch('/api/radar/simulate-burst', {
+      const res = await safeFetchJson('/api/radar/simulate-burst', {
         method: 'POST',
       });
-      const data = await res.json();
 
-      if (data.alert) {
-        tacticalAudio.playThreatAlarm(data.alert.severity);
-        showToast(`Новое сообщение: ${data.alert.regions.join(', ') || 'Тревога'}`);
+      if (res.ok && res.data?.alert) {
+        tacticalAudio.playThreatAlarm(res.data.alert.severity);
+        showToast(`Новое сообщение: ${res.data.alert.regions?.join(', ') || 'Тревога'}`);
       }
       await fetchFeed();
     } catch (err) {
@@ -183,14 +191,13 @@ export default function App() {
   // Handle manual message ingest
   const handleManualIngest = async (text: string, sourceChannel: string) => {
     try {
-      const res = await fetch('/api/radar/ingest', {
+      const res = await safeFetchJson('/api/radar/ingest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, sourceChannel }),
       });
-      const data = await res.json();
-      if (data.alert) {
-        tacticalAudio.playThreatAlarm(data.alert.severity);
+      if (res.ok && res.data?.alert) {
+        tacticalAudio.playThreatAlarm(res.data.alert.severity);
         showToast('Сообщение очищено и добавлено в ленту');
       }
       await fetchFeed();
@@ -200,138 +207,176 @@ export default function App() {
   };
 
   // Update Bot Token and target channel
-  const handleUpdateBotConfig = async (botToken: string, targetChannelId: string) => {
-    let res = await fetch('/api/bot/configure', {
+  const handleUpdateBotConfig = async (rawBotToken: string, rawTargetChannelId: string) => {
+    const botToken = cleanTelegramBotToken(rawBotToken);
+    const targetChannelId = cleanTelegramChatId(rawTargetChannelId);
+
+    let res = await safeFetchJson('/api/bot/configure', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ botToken, targetChannelId }),
     });
 
-    // Fallback to /configure if /api/bot/configure returned 404
-    if (res.status === 404) {
-      res = await fetch('/configure', {
+    if (!res.ok && res.status === 404) {
+      res = await safeFetchJson('/configure', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ botToken, targetChannelId }),
       });
     }
 
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error(`Сервер вернул HTML вместо JSON (${res.status} ${res.statusText}). Проверьте redirects в netlify.toml.`);
+    if (!res.ok) {
+      throw new Error(
+        formatTelegramApiError(res.error, {
+          token: botToken,
+          channel: targetChannelId,
+        })
+      );
     }
 
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Ошибка настройки бота');
-    if (data.config) setTelegramConfig(data.config);
+    if (res.data?.config) {
+      setTelegramConfig(res.data.config);
+    } else {
+      setTelegramConfig((prev) => ({
+        ...prev,
+        botToken,
+        targetChannelId,
+      }));
+    }
   };
 
   // Verify Telegram Bot
-  const handleVerifyBot = async (botToken: string) => {
-    const res = await fetch('/api/bot/verify', {
+  const handleVerifyBot = async (rawBotToken: string) => {
+    const botToken = cleanTelegramBotToken(rawBotToken);
+    if (!botToken) {
+      throw new Error('Укажите токен бота перед проверкой');
+    }
+
+    // 1. Попытка запроса через серверный эндпоинт
+    let res = await safeFetchJson('/api/bot/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ botToken }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Неверный токен бота');
-    setTelegramConfig((prev) => ({
-      ...prev,
-      botUsername: data.bot.username,
-      botFirstName: data.bot.firstName,
-      lastError: null,
-    }));
-    return data.bot;
+
+    if (!res.ok && res.status === 404) {
+      res = await safeFetchJson('/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ botToken }),
+      });
+    }
+
+    if (res.ok && res.data?.bot) {
+      setTelegramConfig((prev) => ({
+        ...prev,
+        botToken,
+        botUsername: res.data.bot.username,
+        botFirstName: res.data.bot.firstName,
+        lastError: null,
+      }));
+      return res.data.bot;
+    }
+
+    // 2. Прямой резервный запрос из браузера к официальному Telegram Bot API (getMe)
+    const tgRes = await safeFetchJson(`https://api.telegram.org/bot${botToken}/getMe`);
+    if (tgRes.ok && tgRes.data?.ok && tgRes.data?.result) {
+      const bot = {
+        username: tgRes.data.result.username,
+        firstName: tgRes.data.result.first_name,
+      };
+      setTelegramConfig((prev) => ({
+        ...prev,
+        botToken,
+        botUsername: bot.username,
+        botFirstName: bot.firstName,
+        lastError: null,
+      }));
+      return bot;
+    }
+
+    const rawError = tgRes.data?.description || tgRes.error || res.error || 'Неверный токен бота';
+    throw new Error(formatTelegramApiError(rawError, { token: botToken }));
   };
 
   // Toggle Background Polling
   const handleTogglePolling = async (enable: boolean) => {
-    const res = await fetch('/api/bot/toggle-polling', {
+    const res = await safeFetchJson('/api/bot/toggle-polling', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enable }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Ошибка переключения поллинга');
-    setTelegramConfig((prev) => ({ ...prev, isPolling: data.isPolling }));
-    showToast(data.isPolling ? 'Фоновый перехват включен' : 'Фоновый перехват выключен');
+    if (!res.ok) throw new Error(res.error || 'Ошибка переключения поллинга');
+    const isPolling = res.data?.isPolling ?? enable;
+    setTelegramConfig((prev) => ({ ...prev, isPolling }));
+    showToast(isPolling ? 'Фоновый перехват включен' : 'Фоновый перехват выключен');
   };
 
   // Send Test message to Telegram channel
-  const handleSendTestToChannel = async (channelId: string) => {
-    const targetChat = channelId.trim();
-    const token = telegramConfig.botToken.trim();
+  const handleSendTestToChannel = async (channelId: string, botToken?: string) => {
+    const token = cleanTelegramBotToken(botToken || telegramConfig.botToken);
+    const targetChat = cleanTelegramChatId(channelId || telegramConfig.targetChannelId);
 
-    try {
-      let res = await fetch('/api/bot/send-test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ chatId: targetChat, botToken: token }),
-      });
-
-      if (res.status === 404) {
-        res = await fetch('/send-test', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({ chatId: targetChat, botToken: token }),
-        });
-      }
-
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Ошибка тестовой отправки');
-        return;
-      }
-    } catch (err: any) {
-      // If error is already a specific Telegram error (not HTML syntax error), rethrow it
-      if (err.message && !err.message.includes('JSON.parse') && !err.message.includes('<!doctype')) {
-        throw err;
-      }
+    if (!token) {
+      throw new Error('Токен Telegram бота не настроен. Укажите токен в поле TELEGRAM BOT TOKEN.');
+    }
+    if (!targetChat) {
+      throw new Error('Укажите ID целевого канала или @имя_канала.');
     }
 
-    // Direct Telegram API fallback from browser if backend returned HTML (e.g. unconfigured Netlify proxy)
-    if (token) {
-      const tgRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    let lastServerError: string | null = null;
+
+    // 1. Попытка отправки через сервер / Netlify Serverless Function
+    let res = await safeFetchJson('/api/bot/send-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chatId: targetChat, botToken: token }),
+    });
+
+    if (!res.ok && res.status === 404) {
+      res = await safeFetchJson('/send-test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: targetChat,
-          text: `🟢 <b>RadarTG Bot: Проверка связи успешна!</b>\n\n🛡️ Связь между радаром и каналом установлена.\nФильтры рекламы и спама активны.\n\n⏱️ Время: ${new Date().toLocaleTimeString('ru-RU')}`,
-          parse_mode: 'HTML',
-        }),
+        body: JSON.stringify({ chatId: targetChat, botToken: token }),
       });
+    }
 
-      const tgData = await tgRes.json();
-      if (!tgData.ok) {
-        let desc = tgData.description || 'Ошибка Telegram API';
-        if (desc.includes('chat not found')) {
-          desc = `Канал не найден (${targetChat}). Проверьте правильность @username или числового ID канала (для закрытых каналов ID должен начинаться с -100...).`;
-        } else if (desc.includes('bot is not a member') || desc.includes('have no rights to send a message')) {
-          desc = `Бот не является администратором канала. Добавьте бота в канал и выдайте ему право «Публикация сообщений»!`;
-        } else if (desc.includes('Unauthorized')) {
-          desc = `Неверный токен Telegram бота. Проверьте токен в @BotFather.`;
-        }
-        throw new Error(desc);
-      }
+    if (res.ok) {
+      return;
+    } else {
+      lastServerError = res.error;
+    }
+
+    // 2. Прямой резервный запрос из браузера к Telegram Bot API (sendMessage)
+    const tgRes = await safeFetchJson(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: targetChat,
+        text: `🟢 <b>RadarTG Bot: Проверка связи успешна!</b>\n\n🛡️ Связь между радаром и каналом установлена.\nФильтры рекламы и спама активны.\n\n⏱️ Время: ${new Date().toLocaleTimeString('ru-RU')}`,
+        parse_mode: 'HTML',
+      }),
+    });
+
+    if (tgRes.ok && tgRes.data?.ok) {
       return;
     }
 
-    throw new Error('Токен Telegram бота не настроен. Сохраните токен во вкладке «Telegram бот».');
+    const rawError = tgRes.data?.description || tgRes.error || lastServerError || 'Ошибка Telegram API';
+    throw new Error(formatTelegramApiError(rawError, { token, channel: targetChat }));
   };
 
   // Save filter configuration
   const handleSaveFilterConfig = async (updated: Partial<FilterConfig>) => {
-    const res = await fetch('/api/filters/config', {
+    const res = await safeFetchJson('/api/filters/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updated),
     });
-    const data = await res.json();
-    if (data.config) {
-      setFilterConfig(data.config);
-      if (data.config.soundAlerts !== undefined) {
-        setSoundEnabled(data.config.soundAlerts);
+    if (res.ok && res.data?.config) {
+      setFilterConfig(res.data.config);
+      if (res.data.config.soundAlerts !== undefined) {
+        setSoundEnabled(res.data.config.soundAlerts);
       }
     }
   };
@@ -526,39 +571,38 @@ export default function App() {
             <FilterSandbox
               initialText={sandboxPresetText}
               onSendTestToBot={async (cleanedText) => {
-                if (!telegramConfig.botToken || !telegramConfig.targetChannelId) {
-                  throw new Error('Telegram бот не настроен! Перейдите во вкладку «Telegram бот».');
-                }
-                const token = telegramConfig.botToken.trim();
-                const target = telegramConfig.targetChannelId.trim();
+                const token = cleanTelegramBotToken(telegramConfig.botToken);
+                const target = cleanTelegramChatId(telegramConfig.targetChannelId);
 
-                try {
-                  let res = await fetch('/api/bot/send-test', {
+                if (!token || !target) {
+                  throw new Error('Telegram бот не настроен! Заполните токен и целевой канал во вкладке «Telegram бот».');
+                }
+
+                let lastError: string | null = null;
+
+                // 1. Попытка через сервер / Netlify Function
+                let res = await safeFetchJson('/api/bot/send-test', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ customText: cleanedText, botToken: token, chatId: target }),
+                });
+
+                if (!res.ok && res.status === 404) {
+                  res = await safeFetchJson('/send-test', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ customText: cleanedText, botToken: token, chatId: target }),
                   });
-                  if (res.status === 404) {
-                    res = await fetch('/send-test', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-                      body: JSON.stringify({ customText: cleanedText, botToken: token, chatId: target }),
-                    });
-                  }
-                  const ct = res.headers.get('content-type') || '';
-                  if (ct.includes('application/json')) {
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.error || 'Ошибка отправки');
-                    return;
-                  }
-                } catch (err: any) {
-                  if (err.message && !err.message.includes('JSON.parse') && !err.message.includes('<!doctype')) {
-                    throw err;
-                  }
                 }
 
-                // Direct browser fallback to Telegram Bot API
-                const tgRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                if (res.ok) {
+                  return;
+                } else {
+                  lastError = res.error;
+                }
+
+                // 2. Прямой резервный запрос из браузера к Telegram Bot API
+                const tgRes = await safeFetchJson(`https://api.telegram.org/bot${token}/sendMessage`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -567,10 +611,13 @@ export default function App() {
                     parse_mode: 'HTML',
                   }),
                 });
-                const tgData = await tgRes.json();
-                if (!tgData.ok) {
-                  throw new Error(tgData.description || 'Ошибка отправки в Telegram');
+
+                if (tgRes.ok && tgRes.data?.ok) {
+                  return;
                 }
+
+                const rawErr = tgRes.data?.description || tgRes.error || lastError || 'Ошибка отправки в Telegram';
+                throw new Error(formatTelegramApiError(rawErr, { token, channel: target }));
               }}
               hasTelegramBot={Boolean(telegramConfig.botToken && telegramConfig.targetChannelId)}
             />

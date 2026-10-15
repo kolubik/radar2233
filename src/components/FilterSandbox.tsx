@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { tacticalAudio } from '../utils/audio.ts';
+import { safeFetchJson } from '../utils/api.ts';
 import {
   Sparkles,
   Play,
@@ -82,7 +83,7 @@ export const FilterSandbox: React.FC<FilterSandboxProps> = ({
     setSendSuccess(null);
 
     try {
-      const res = await fetch('/api/filters/test', {
+      const res = await safeFetchJson('/api/filters/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -92,9 +93,12 @@ export const FilterSandbox: React.FC<FilterSandboxProps> = ({
         }),
       });
 
-      const data = await res.json();
-      setResult(data);
-      tacticalAudio.playCleanSound();
+      if (res.ok && res.data) {
+        setResult(res.data);
+        tacticalAudio.playCleanSound();
+      } else {
+        console.error('Test filter failed:', res.error);
+      }
     } catch (err) {
       console.error('Test filter failed:', err);
     } finally {

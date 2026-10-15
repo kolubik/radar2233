@@ -34,11 +34,17 @@ import {
   FileJson,
   FileText,
   ChevronDown,
+  ChevronUp,
   Check,
   Copy,
+  Trash2,
+  Bug,
+  Radio,
+  Terminal,
 } from 'lucide-react';
 import { ParsedAlert, ThreatType, ThreatSeverity } from '../types.ts';
 import { tacticalAudio } from '../utils/audio.ts';
+import { useErrorLogger } from '../services/errorLoggingService.ts';
 
 interface AnalyticsTabProps {
   alerts: ParsedAlert[];
@@ -98,6 +104,76 @@ const CustomDarkTooltip = ({ active, payload, label }: any) => {
 export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ alerts, onSimulateBurst }) => {
   const [timeRange, setTimeRange] = useState<'ALL' | '24H' | '7D'>('ALL');
   const [threatFilter, setThreatFilter] = useState<string>('ALL');
+
+  // Централизованное логирование ошибок и телеметрия
+  const { recentErrors, errorCount, clearErrors, exportErrors, logError } = useErrorLogger('Вкладка «Аналитика»');
+  const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
+  const [copiedErrorId, setCopiedErrorId] = useState<string | null>(null);
+  const [copiedAllLogs, setCopiedAllLogs] = useState(false);
+
+  const handleTriggerTestError = () => {
+    try {
+      tacticalAudio.playCleanSound();
+    } catch {}
+    logError(
+      new Error(`[Тестовый сбой] Проверка системы Error Boundary и централизованного логирования (время: ${new Date().toLocaleTimeString('ru-RU')})`),
+      { componentStack: '\n    at TestSimulator (src/components/AnalyticsTab.tsx)\n    at AnalyticsTab (src/components/AnalyticsTab.tsx)' },
+      {
+        module: 'Модуль тестирования телеметрии',
+        severity: 'MEDIUM',
+        handled: true,
+        metadata: {
+          triggeredBy: 'Оператор радара (кнопка тестирования)',
+          alertsCount: alerts.length,
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
+        },
+      }
+    );
+  };
+
+  const handleCopySingleError = (err: any) => {
+    const report = [
+      `=== ОТЧЕТ ОБ ОШИБКЕ RADARTG ERROR BOUNDARY ===`,
+      `ID инцидента: ${err.id}`,
+      `Время фиксации: ${err.timeString} (${new Date(err.timestamp).toISOString()})`,
+      `Модуль: ${err.module}`,
+      `Степень критичности: ${err.severity}`,
+      `Исключение: ${err.name}: ${err.message}`,
+      `URL: ${err.url}`,
+      `User Agent: ${err.userAgent}`,
+      ``,
+      `--- СТЕК ВЫЗОВОВ ---`,
+      err.stack || 'Стек недоступен',
+      ``,
+      `--- ИЕРАРХИЯ КОМПОНЕНТОВ ---`,
+      err.componentStack || 'Стек компонентов недоступен',
+    ].join('\n');
+
+    try {
+      navigator.clipboard.writeText(report);
+      setCopiedErrorId(err.id);
+      setTimeout(() => setCopiedErrorId(null), 2000);
+      try {
+        tacticalAudio.playCleanSound();
+      } catch {}
+    } catch (e) {
+      console.warn('Не удалось скопировать:', e);
+    }
+  };
+
+  const handleExportAll = () => {
+    try {
+      const data = exportErrors();
+      navigator.clipboard.writeText(data);
+      setCopiedAllLogs(true);
+      setTimeout(() => setCopiedAllLogs(false), 2000);
+      try {
+        tacticalAudio.playCleanSound();
+      } catch {}
+    } catch (e) {
+      console.warn('Не удалось экспортировать логи:', e);
+    }
+  };
 
   // Filter alerts by time range
   const filteredAlerts = useMemo(() => {
@@ -1156,6 +1232,218 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ alerts, onSimulateBu
               Аналитика обновляется в реальном времени
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Row 4: Central Error Telemetry & ErrorBoundary Diagnostic Hub */}
+      <div className="bg-slate-900/60 rounded-xl border border-slate-800/80 p-5 mt-6 relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+          <div className="flex items-start gap-3">
+            <div className={`p-2.5 rounded-xl border mt-0.5 relative ${
+              errorCount > 0
+                ? 'bg-rose-500/15 border-rose-500/30 text-rose-400'
+                : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+            }`}>
+              {errorCount > 0 ? (
+                <>
+                  <Bug className="w-5 h-5 animate-pulse" />
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-500 ring-4 ring-rose-950 animate-ping" />
+                </>
+              ) : (
+                <Radio className="w-5 h-5" />
+              )}
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <span className="text-xs font-mono font-bold tracking-wider uppercase text-slate-400">
+                  ТЕЛЕМЕТРИЯ СБОЕВ • CENTRAL_ERROR_LOGS
+                </span>
+                {errorCount === 0 ? (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    СИСТЕМА СТАБИЛЬНА
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-rose-950/80 text-rose-300 border border-rose-500/40 animate-pulse">
+                    ФИКСИРУЮТСЯ ИНЦИДЕНТЫ ({errorCount})
+                  </span>
+                )}
+              </div>
+              <h3 className="text-sm font-semibold text-slate-100">
+                Централизованный журнал ошибок Error Boundary
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Изолирует сбои компонентов, фиксирует стек вызовов, передает данные на центральный endpoint аналитики и в консоль
+              </p>
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleTriggerTestError}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border border-slate-700/60 cursor-pointer transition-colors"
+              title="Сгенерировать тестовый сбой для проверки логирования"
+            >
+              <Bug className="w-3.5 h-3.5 text-amber-400" />
+              <span>Тестовый сбой</span>
+            </button>
+
+            {errorCount > 0 && (
+              <>
+                <button
+                  onClick={handleExportAll}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border border-slate-700/60 cursor-pointer transition-colors"
+                  title="Экспорт всех ошибок в JSON"
+                >
+                  {copiedAllLogs ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-emerald-300">Скопировано!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Экспорт JSON</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={clearErrors}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50 cursor-pointer transition-colors"
+                  title="Очистить локальный и серверный журнал ошибок"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Очистить журнал</span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Content: List of recorded errors */}
+        <div className="mt-4">
+          {recentErrors.length === 0 ? (
+            <div className="py-8 text-center bg-slate-950/40 rounded-xl border border-slate-800/40 flex flex-col items-center justify-center gap-2">
+              <CheckCircle2 className="w-8 h-8 text-emerald-500/60" />
+              <p className="text-sm font-medium text-slate-300">
+                Журнал чист — сбоев в работе компонентов не обнаружено
+              </p>
+              <p className="text-xs text-slate-500 max-w-md">
+                При возникновении исключения в любом модуле (ThreatFeed, Sandbox, BotSetup, Tasks), предохранитель изолирует сбой и передаст телеметрию в этот журнал и на сервер.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {recentErrors.map((err) => {
+                const isExpanded = expandedErrorId === err.id;
+                const isCopied = copiedErrorId === err.id;
+
+                return (
+                  <div
+                    key={err.id}
+                    className="bg-slate-950/60 border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3.5 transition-all text-xs"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                      <div className="flex flex-wrap items-center gap-2 font-mono">
+                        <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-sky-300 font-bold text-[11px]">
+                          {err.id}
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 text-slate-300 text-[11px]">
+                          {err.module}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                          err.severity === 'CRITICAL'
+                            ? 'bg-rose-950/80 text-rose-300 border-rose-700/60'
+                            : err.severity === 'HIGH'
+                            ? 'bg-orange-950/80 text-orange-300 border-orange-700/60'
+                            : 'bg-amber-950/80 text-amber-300 border-amber-700/60'
+                        }`}>
+                          {err.severity}
+                        </span>
+                        {err.handled ? (
+                          <span className="text-[10px] text-emerald-400/90 bg-emerald-950/60 border border-emerald-800/50 px-1.5 py-0.5 rounded">
+                            Изолировано ErrorBoundary
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-rose-400/90 bg-rose-950/60 border border-rose-800/50 px-1.5 py-0.5 rounded">
+                            Глобальный перехват
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[11px] text-slate-400">
+                          {err.timeString}
+                        </span>
+                        <button
+                          onClick={() => handleCopySingleError(err)}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border cursor-pointer transition-colors ${
+                            isCopied
+                              ? 'bg-emerald-950 border-emerald-500/50 text-emerald-300'
+                              : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300'
+                          }`}
+                          title="Скопировать отчет об этой ошибке"
+                        >
+                          {isCopied ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-400" />
+                              <span>Скопировано</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3 text-slate-400" />
+                              <span>Отчет</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Error message */}
+                    <div className="font-mono text-rose-300 bg-rose-950/20 border border-rose-900/30 rounded-lg p-2.5 break-words select-all">
+                      <strong className="text-rose-400">{err.name}:</strong> {err.message}
+                    </div>
+
+                    {/* Expandable stack trace & component stack */}
+                    {(err.stack || err.componentStack) && (
+                      <div className="mt-2 pt-2 border-t border-slate-800/60">
+                        <button
+                          onClick={() => setExpandedErrorId(isExpanded ? null : err.id)}
+                          className="flex items-center gap-1.5 text-slate-400 hover:text-slate-200 cursor-pointer font-mono text-[11px]"
+                        >
+                          <Terminal className="w-3 h-3 text-emerald-400" />
+                          <span>{isExpanded ? 'Скрыть стек вызовов' : 'Показать стек вызовов и компонентную иерархию'}</span>
+                          {isExpanded ? (
+                            <ChevronUp className="w-3 h-3 ml-0.5" />
+                          ) : (
+                            <ChevronDown className="w-3 h-3 ml-0.5" />
+                          )}
+                        </button>
+
+                        {isExpanded && (
+                          <div className="mt-2 space-y-2 animate-in fade-in duration-150">
+                            {err.stack && (
+                              <div className="p-2.5 rounded-lg bg-slate-950/90 border border-slate-800 font-mono text-[10px] text-slate-300 overflow-x-auto whitespace-pre leading-relaxed select-all">
+                                <div className="text-slate-500 font-semibold mb-1">// JavaScript Call Stack:</div>
+                                {err.stack}
+                              </div>
+                            )}
+                            {err.componentStack && (
+                              <div className="p-2.5 rounded-lg bg-slate-950/90 border border-slate-800 font-mono text-[10px] text-amber-300/90 overflow-x-auto whitespace-pre leading-relaxed select-all">
+                                <div className="text-amber-500/80 font-semibold mb-1">// React Component Hierarchy:</div>
+                                {err.componentStack}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -16,6 +16,15 @@
 /api/send-test       /.netlify/functions/send-test   200!
 /api/bot/send-test   /.netlify/functions/send-test   200!
 
+# Verify Bot endpoint
+/verify              /.netlify/functions/verify      200!
+/api/verify          /.netlify/functions/verify      200!
+/api/bot/verify      /.netlify/functions/verify      200!
+
+# Bot Status endpoint
+/status              /.netlify/functions/status      200!
+/api/bot/status      /.netlify/functions/status      200!
+
 # General API wildcard
 /api/*               /.netlify/functions/:splat      200
 

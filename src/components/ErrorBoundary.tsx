@@ -11,8 +11,10 @@ import {
   ShieldAlert,
   Home,
   FileCode,
+  Radio,
 } from 'lucide-react';
 import { tacticalAudio } from '../utils/audio.ts';
+import { errorLoggingService } from '../services/errorLoggingService.ts';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -30,6 +32,8 @@ interface ErrorBoundaryState {
   showDetails: boolean;
   copied: boolean;
   errorTimestamp: string | null;
+  errorId: string | null;
+  telemetryLogged: boolean;
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
@@ -40,6 +44,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     showDetails: false,
     copied: false,
     errorTimestamp: null,
+    errorId: null,
+    telemetryLogged: false,
   };
 
   public static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
@@ -57,19 +63,27 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     this.setState({ errorInfo });
 
-    // Воспроизводим звуковое предупреждение радара при сбое
+    // Воспроизводим тактический звуковой сигнал тревоги при сбое
     try {
       tacticalAudio.playThreatAlarm('HIGH');
     } catch {
       // Игнорируем ограничения автовоспроизведения звука браузером
     }
 
-    console.error('[RadarTG ErrorBoundary] Перехвачено исключение в компоненте:', {
-      module: this.props.moduleName || 'Неизвестный модуль',
-      error: error.message,
-      stack: error.stack,
-      componentStack: errorInfo.componentStack,
-    });
+    // Регистрируем ошибку в центральной службе телеметрии (консоль, серверная аналитика, localStorage)
+    try {
+      const record = errorLoggingService.logError(error, errorInfo, {
+        module: this.props.moduleName || 'Неизвестный модуль',
+        severity: this.props.isRoot ? 'CRITICAL' : 'HIGH',
+        handled: true,
+      });
+      this.setState({
+        errorId: record.id,
+        telemetryLogged: true,
+      });
+    } catch (e) {
+      console.error('[RadarTG ErrorBoundary] Ошибка при отправке телеметрии:', e);
+    }
   }
 
   private handleReset = () => {
@@ -83,6 +97,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       errorInfo: null,
       showDetails: false,
       copied: false,
+      errorId: null,
+      telemetryLogged: false,
     });
 
     if (this.props.onReset) {
@@ -102,12 +118,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   };
 
   private handleCopyDiagnostic = () => {
-    const { error, errorInfo, errorTimestamp } = this.state;
+    const { error, errorInfo, errorTimestamp, errorId, telemetryLogged } = this.state;
     const { moduleName } = this.props;
 
     const diagnosticReport = [
       `=== ОТЧЕТ ОБ ОШИБКЕ RADARTG ERROR BOUNDARY ===`,
       `Время фиксации: ${new Date().toISOString()} (${errorTimestamp || 'Н/Д'})`,
+      `ID инцидента: ${errorId || 'N/A'}`,
+      `Телеметрия: ${telemetryLogged ? 'Зафиксировано в центральном журнале аналитики' : 'Локальный перехват'}`,
       `Модуль: ${moduleName || 'Корневой компонент UI'}`,
       `URL: ${typeof window !== 'undefined' ? window.location.href : 'N/A'}`,
       `User Agent: ${typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A'}`,
@@ -137,7 +155,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   };
 
   public render() {
-    const { hasError, error, errorInfo, showDetails, copied, errorTimestamp } = this.state;
+    const { hasError, error, errorInfo, showDetails, copied, errorTimestamp, errorId, telemetryLogged } = this.state;
     const { children, moduleName, fallbackTitle, isRoot, onNavigateHome } = this.props;
 
     if (!hasError) {
@@ -179,6 +197,18 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 <p className="text-xs text-slate-400 mt-0.5">
                   Предохранитель Error Boundary изолировал сбой компонента и защитил приложение от полного падения.
                 </p>
+
+                {errorId && (
+                  <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-slate-800/60 text-[11px] font-mono">
+                    <span className="flex items-center gap-1.5 text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded">
+                      <Radio className="w-3 h-3 animate-pulse" />
+                      <span>Телеметрия: Зафиксировано централизованно</span>
+                    </span>
+                    <span className="text-slate-400 bg-slate-950/80 border border-slate-800 px-2 py-0.5 rounded">
+                      ID инцидента: <strong className="text-slate-200 select-all">{errorId}</strong>
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -107,6 +107,9 @@ export interface TelegramSubscriber {
   subscribedRegions: string[];
   active: boolean;
   createdAt: number;
+  isDemo?: boolean;
+  lastDeliveryError?: string | null;
+  lastDeliveredAt?: number | null;
 }
 
 export interface TelegramBotConfig {
@@ -156,6 +159,9 @@ export interface ParsingChannel {
   lastParsedAt?: number;
   lastAlertDetected?: string;
   notes?: string;
+  avatarUrl?: string;
+  description?: string;
+  isOnline?: boolean;
   sqlRowId?: number;
 }
 
@@ -172,4 +178,20 @@ export interface SqlTableInfo {
   name: string;
   columns: { name: string; type: string; isPrimary?: boolean }[];
   rowCount: number;
+}
+
+export interface ErrorTelemetryRecord {
+  id: string;
+  timestamp: number;
+  timeString: string;
+  name: string;
+  message: string;
+  stack?: string;
+  componentStack?: string;
+  module: string;
+  severity: ThreatSeverity;
+  url: string;
+  userAgent: string;
+  metadata?: Record<string, any>;
+  handled: boolean;
 }

@@ -29,6 +29,8 @@ import {
   Flame,
   Clock,
   Sparkles,
+  X,
+  AtSign,
 } from 'lucide-react';
 
 interface ChannelsTabProps {
@@ -46,6 +48,13 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const [parsingChannelId, setParsingChannelId] = useState<string | null>(null);
 
+  // Quick Add By Username State with Validation
+  const [quickUsername, setQuickUsername] = useState('');
+  const [isAddingQuick, setIsAddingQuick] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formSuccess, setFormSuccess] = useState<string | null>(null);
+  const [isParsingAll, setIsParsingAll] = useState(false);
+
   // Add / Edit Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingChannel, setEditingChannel] = useState<ParsingChannel | null>(null);
@@ -53,8 +62,8 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
     username: '',
     title: '',
     category: 'REGIONAL' as ChannelCategory,
-    priority: 'NORMAL' as 'HIGH' | 'NORMAL' | 'LOW',
-    parseIntervalSeconds: 10,
+    priority: 'HIGH' as 'HIGH' | 'NORMAL' | 'LOW',
+    parseIntervalSeconds: 2,
     autoForward: true,
     notes: '',
   });
@@ -95,7 +104,6 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
 
   // Fetch channels list
   const fetchChannels = async () => {
-    setIsLoading(true);
     try {
       const res = await fetch('/api/channels');
       if (res.ok) {
@@ -104,8 +112,6 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
       }
     } catch (err) {
       console.error('Failed to fetch channels:', err);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -123,8 +129,13 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
   };
 
   useEffect(() => {
-    fetchChannels();
+    setIsLoading(true);
+    fetchChannels().finally(() => setIsLoading(false));
     fetchSqlSchema();
+
+    // Fast frequent polling (2.5s) to reflect online parsed messages in real-time
+    const interval = setInterval(fetchChannels, 2500);
+    return () => clearInterval(interval);
   }, []);
 
   // Execute SQL Query
@@ -175,21 +186,195 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
     }
   };
 
-  // Test parse channel
+  // Telegram Username Validator (Strict validation: must start with '@' and contain valid Telegram username characters)
+  const validateTelegramUsername = (
+    raw: string,
+    excludeChannelId?: string
+  ): { isValid: boolean; error?: string; cleanUsername?: string; usernameWithAt?: string } => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return {
+        isValid: false,
+        error: 'Пожалуйста, укажите Telegram-никнейм канала (например: @channelname)',
+      };
+    }
+
+    // 1. Проверка: начинается ли никнейм с '@'
+    if (!trimmed.startsWith('@')) {
+      const suggestion = trimmed
+        .replace(/^https?:\/\/t\.me\/(s\/)?/i, '')
+        .replace(/^t\.me\/(s\/)?/i, '')
+        .replace(/^[^\w]+/, '');
+      return {
+        isValid: false,
+        error: `Никнейм должен обязательно начинаться с символа '@' (например: @${suggestion || 'channelname'}).`,
+      };
+    }
+
+    // Защита от дублирующихся @@ в начале
+    if (trimmed.startsWith('@@')) {
+      return {
+        isValid: false,
+        error: "Никнейм должен содержать только один символ '@' в начале (например: @channelname).",
+      };
+    }
+
+    const usernamePart = trimmed.slice(1);
+
+    // 2. Проверка: наличие имени после '@'
+    if (!usernamePart) {
+      return {
+        isValid: false,
+        error: "Укажите имя канала после символа '@' (например: @channelname).",
+      };
+    }
+
+    // 3. Проверка корректности символов Telegram-юзернейма
+    // Никаких пробелов
+    if (/\s/.test(usernamePart)) {
+      return {
+        isValid: false,
+        error: 'Никнейм не должен содержать пробелов.',
+      };
+    }
+
+    // Никакой кириллицы
+    if (/[а-яА-ЯёЁіІїЇєЄґҐ]/.test(usernamePart)) {
+      return {
+        isValid: false,
+        error: 'Никнейм не должен содержать кириллицу. Разрешены только латинские буквы (a-z, A-Z), цифры (0-9) и знак подчеркивания (_).',
+      };
+    }
+
+    // Проверка допустимых символов: только латиница, цифры и знак подчеркивания
+    if (!/^[a-zA-Z0-9_]+$/.test(usernamePart)) {
+      return {
+        isValid: false,
+        error: 'Никнейм содержит недопустимые символы. Telegram-юзернейм может содержать только латинские буквы (a-z, A-Z), цифры (0-9) и знак подчеркивания (_).',
+      };
+    }
+
+    // 4. Проверка длины юзернейма (стандарт Telegram: от 4 до 32 символов)
+    if (usernamePart.length < 4 || usernamePart.length > 32) {
+      return {
+        isValid: false,
+        error: `Длина юзернейма должна быть от 4 до 32 символов (введено: ${usernamePart.length}).`,
+      };
+    }
+
+    // 5. Проверка на дубликат среди существующих каналов
+    const isDuplicate = channels.some(
+      (c) =>
+        c.id !== excludeChannelId &&
+        c.username.replace(/^@/, '').toLowerCase() === usernamePart.toLowerCase()
+    );
+    if (isDuplicate) {
+      return {
+        isValid: false,
+        error: `Канал @${usernamePart} уже добавлен в систему онлайн-парсинга.`,
+      };
+    }
+
+    return {
+      isValid: true,
+      cleanUsername: usernamePart,
+      usernameWithAt: `@${usernamePart}`,
+    };
+  };
+
+  // Add Channel by Telegram Nickname Only (Strict manual registration for online parsing)
+  const handleAddQuickByUsername = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+    setFormSuccess(null);
+
+    const validation = validateTelegramUsername(quickUsername);
+    if (!validation.isValid || !validation.cleanUsername) {
+      const err = validation.error || 'Ошибка валидации никнейма';
+      setFormError(err);
+      tacticalAudio.playThreatAlarm('MEDIUM');
+      onToast(err, true);
+      return;
+    }
+
+    setIsAddingQuick(true);
+    try {
+      const res = await fetch('/api/channels/add-by-username', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: validation.cleanUsername,
+          priority: 'HIGH',
+          parseIntervalSeconds: 2,
+          autoForward: true,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Ошибка регистрации канала в системе онлайн-парсинга');
+      }
+
+      tacticalAudio.playCleanSound();
+      const channelTitle = data.channel?.title || `@${validation.cleanUsername}`;
+      const successMsg = `Канал ${channelTitle} (@${validation.cleanUsername}) успешно зарегистрирован для онлайн-парсинга!`;
+      setFormSuccess(successMsg);
+      onToast(data.message || successMsg);
+      setQuickUsername('');
+      await fetchChannels();
+      if (onRefreshFeed) await onRefreshFeed();
+
+      // Auto clear success notice after 6 seconds
+      setTimeout(() => setFormSuccess(null), 6000);
+    } catch (err: any) {
+      tacticalAudio.playThreatAlarm('MEDIUM');
+      const errText = err.message || 'Сбой подключения к каналу в Telegram';
+      setFormError(errText);
+      onToast(errText, true);
+    } finally {
+      setIsAddingQuick(false);
+    }
+  };
+
+  // Immediate Online Parse of all channels
+  const handleParseAllNow = async () => {
+    setIsParsingAll(true);
+    try {
+      const res = await fetch('/api/channels/parse-all', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ошибка онлайн парсинга');
+
+      tacticalAudio.playRadarBlip();
+      onToast('Все каналы успешно спарсены онлайн!');
+      await fetchChannels();
+      if (onRefreshFeed) await onRefreshFeed();
+    } catch (err: any) {
+      onToast(`Ошибка: ${err.message}`, true);
+    } finally {
+      setIsParsingAll(false);
+    }
+  };
+
+  // Real Online Parse single channel
   const handleTestParseChannel = async (channel: ParsingChannel) => {
     setParsingChannelId(channel.id);
     try {
       const res = await fetch(`/api/channels/${channel.id}/test-parse`, { method: 'POST' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Ошибка парсинга');
+      if (!res.ok) throw new Error(data.error || 'Ошибка онлайн парсинга');
 
-      tacticalAudio.playThreatAlarm(data.alert.severity);
-      onToast(`Спарсен пост из ${channel.username}: ${data.alert.threatType} (${data.alert.processingTimeMs || 0.8} мс)`);
+      if (data.alert) {
+        tacticalAudio.playThreatAlarm(data.alert.severity);
+        onToast(`Спарсен пост онлайн (${channel.username}): ${data.alert.threatType} — ${data.alert.regions.join(', ')}`);
+      } else {
+        tacticalAudio.playCleanSound();
+        onToast(data.message || `Канал ${channel.username} проверен онлайн (новых постов нет)`);
+      }
 
       await fetchChannels();
       if (onRefreshFeed) await onRefreshFeed();
     } catch (err: any) {
-      onToast(`Ошибка: ${err.message}`, true);
+      onToast(`Ошибка парсинга онлайн: ${err.message}`, true);
     } finally {
       setParsingChannelId(null);
     }
@@ -212,28 +397,37 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
   // Save Channel (Add or Edit)
   const handleSaveChannel = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.username.trim()) {
-      onToast('Укажите имя канала', true);
+    const validation = validateTelegramUsername(formData.username, editingChannel?.id);
+    if (!validation.isValid || !validation.cleanUsername) {
+      tacticalAudio.playThreatAlarm('MEDIUM');
+      onToast(validation.error || 'Ошибка валидации никнейма', true);
       return;
     }
+
+    const payload = {
+      ...formData,
+      username: `@${validation.cleanUsername}`,
+    };
 
     try {
       if (editingChannel) {
         const res = await fetch(`/api/channels/${editingChannel.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
+          body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error('Ошибка обновления');
+        tacticalAudio.playCleanSound();
         onToast('Канал успешно обновлен');
       } else {
         const res = await fetch('/api/channels', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
+          body: JSON.stringify(payload),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Ошибка добавления');
+        tacticalAudio.playCleanSound();
         onToast('Канал добавлен в базу мониторинга');
       }
 
@@ -241,6 +435,7 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
       setEditingChannel(null);
       await fetchChannels();
     } catch (err: any) {
+      tacticalAudio.playThreatAlarm('MEDIUM');
       onToast(`Ошибка: ${err.message}`, true);
     }
   };
@@ -367,7 +562,207 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
       {/* SUB-TAB 1: CHANNELS LIST */}
       {activeSubTab === 'channels' && (
         <div className="space-y-4">
-          {/* Controls Bar: Search, Category Filter & Add Button */}
+          {/* Dedicated Form for Adding Channel by Telegram Nickname Only */}
+          <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900/90 to-slate-900/90 rounded-2xl border border-emerald-500/30 p-4 sm:p-5 shadow-xl backdrop-blur-md space-y-3.5">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                  </span>
+                  <h3 className="text-sm font-bold text-emerald-400 uppercase tracking-wider font-mono">
+                    ДОБАВЛЕНИЕ КАНАЛА ПО TELEGRAM-НИКНЕЙМУ
+                  </h3>
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-mono">
+                    Онлайн-парсинг • Live
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-1">
+                  Ручная регистрация канала: укажите только никнейм (например, <span className="font-mono text-emerald-400">@channelname</span>). Название, аватар и оперативные сообщения будут проверены и спарсены онлайн напрямую из Telegram.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleParseAllNow}
+                  disabled={isParsingAll || channels.length === 0}
+                  className="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold font-mono flex items-center gap-2 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                  title="Запустить немедленный онлайн-парсинг всех активных каналов"
+                >
+                  <Zap className={`w-4 h-4 text-amber-400 ${isParsingAll ? 'animate-spin' : ''}`} />
+                  <span>{isParsingAll ? 'Парсинг...' : 'Спарсить все каналы онлайн'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Validation Error Alert Banner */}
+            {formError && (
+              <div className="bg-rose-950/80 border border-rose-800/80 rounded-xl p-3 flex items-start gap-2.5 text-xs text-rose-200 animate-fadeIn">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <span className="font-semibold block font-mono">Ошибка валидации никнейма:</span>
+                  <span className="text-rose-300">{formError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormError(null)}
+                  className="text-rose-400 hover:text-rose-200 cursor-pointer p-0.5"
+                  title="Закрыть"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Success Alert Banner */}
+            {formSuccess && (
+              <div className="bg-emerald-950/80 border border-emerald-800/80 rounded-xl p-3 flex items-start gap-2.5 text-xs text-emerald-200 animate-fadeIn">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <span className="font-semibold block font-mono">Канал успешно зарегистрирован:</span>
+                  <span className="text-emerald-300">{formSuccess}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormSuccess(null)}
+                  className="text-emerald-400 hover:text-emerald-200 cursor-pointer p-0.5"
+                  title="Закрыть"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Form for adding channel only by Telegram nickname */}
+            {(() => {
+              const trimmedInput = quickUsername.trim();
+              const liveCheck = trimmedInput ? validateTelegramUsername(quickUsername) : null;
+              return (
+                <form onSubmit={handleAddQuickByUsername} className="space-y-2.5">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <div className="relative flex-1">
+                      <div className="absolute left-3 top-2.5 text-emerald-400 select-none">
+                        <AtSign className="w-4 h-4 text-emerald-400" />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Введите никнейм канала (обязательно с '@', например: @zahid_informue)"
+                        value={quickUsername}
+                        onChange={(e) => {
+                          setQuickUsername(e.target.value);
+                          if (formError) setFormError(null);
+                        }}
+                        disabled={isAddingQuick}
+                        className={`w-full bg-slate-950/90 border rounded-xl pl-9 pr-9 py-2.5 text-xs font-mono text-slate-100 placeholder-slate-500 focus:outline-none shadow-inner transition-colors ${
+                          !trimmedInput
+                            ? 'border-slate-700/80 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/50'
+                            : liveCheck?.isValid
+                            ? 'border-emerald-500/80 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/50'
+                            : 'border-rose-500/80 focus:border-rose-400 focus:ring-1 focus:ring-rose-400/50'
+                        }`}
+                      />
+                      {quickUsername && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQuickUsername('');
+                            setFormError(null);
+                          }}
+                          className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300 cursor-pointer"
+                          title="Очистить"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isAddingQuick || !quickUsername.trim()}
+                      className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold font-mono uppercase tracking-wide flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                    >
+                      {isAddingQuick ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Подключение онлайн...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4" />
+                          <span>Добавить канал</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Real-time Validation Feedback Hint */}
+                  {trimmedInput && (
+                    <div className="text-[11px] font-mono px-1">
+                      {!trimmedInput.startsWith('@') ? (
+                        <div className="flex items-center gap-1.5 text-amber-400">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>Никнейм должен обязательно начинаться с символа '@'</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const autoFixed =
+                                '@' +
+                                trimmedInput
+                                  .replace(/^https?:\/\/t\.me\/(s\/)?/i, '')
+                                  .replace(/^t\.me\/(s\/)?/i, '');
+                              setQuickUsername(autoFixed);
+                              if (formError) setFormError(null);
+                            }}
+                            className="ml-2 px-1.5 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[10px] cursor-pointer transition-colors"
+                          >
+                            Добавить @ в начало
+                          </button>
+                        </div>
+                      ) : !liveCheck?.isValid ? (
+                        <div className="flex items-center gap-1.5 text-rose-400">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>{liveCheck?.error}</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-emerald-400">
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                          <span>Корректный Telegram-никнейм: @{liveCheck.cleanUsername} (готов к онлайн-парсингу)</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+              {/* Quick Suggestion Chips */}
+              <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-slate-400 font-mono">
+                <span className="text-slate-500 select-none">Быстрый выбор:</span>
+                {[
+                  { tag: '@kpszsu', name: 'ВПС ЗСУ' },
+                  { tag: '@zahid_informue', name: 'Захід Інформує' },
+                  { tag: '@UkraineAlarmSignal', name: 'єТривога' },
+                  { tag: '@vanek_nikolaev', name: 'Ванёк' },
+                ].map((s) => (
+                  <button
+                    key={s.tag}
+                    type="button"
+                    onClick={() => {
+                      setQuickUsername(s.tag);
+                      setFormError(null);
+                    }}
+                    className="px-2 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-emerald-300 border border-slate-700/60 transition-colors cursor-pointer"
+                    title={`Вставить ${s.tag} (${s.name})`}
+                  >
+                    {s.tag} <span className="text-slate-500 text-[10px]">({s.name})</span>
+                  </button>
+                ))}
+              </div>
+            </form>
+          );
+        })()}
+      </div>
+
+          {/* Controls Bar: Search, Category Filter & Manual Form */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-xl border border-slate-800/60">
             <div className="flex flex-1 items-center gap-2">
               <div className="relative flex-1 max-w-sm">
@@ -407,16 +802,30 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
 
               <button
                 onClick={openCreateModal}
-                className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-lg shadow-emerald-950/40"
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
               >
-                <Plus className="w-4 h-4" />
-                <span>Добавить канал</span>
+                <Plus className="w-3.5 h-3.5" />
+                <span>Расширенные настройки</span>
               </button>
             </div>
           </div>
 
           {/* Channels Grid / List */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {filteredChannels.length === 0 && (
+              <div className="col-span-full bg-slate-900/60 rounded-2xl border border-dashed border-slate-800 p-8 text-center">
+                <Radio className="w-10 h-10 text-slate-600 mx-auto mb-3 animate-pulse" />
+                <h4 className="text-sm font-bold text-slate-300 font-mono uppercase">
+                  {channels.length === 0 ? 'НЕТ ПОДКЛЮЧЕННЫХ КАНАЛОВ' : 'КАНАЛЫ НЕ НАЙДЕНЫ'}
+                </h4>
+                <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
+                  {channels.length === 0
+                    ? 'Автоматические предустановки отключены. Введите никнейм любого публичного Telegram-канала в поле выше (например: @zahid_informue или UkraineAlarmSignal) для запуска прямого онлайн-парсинга.'
+                    : 'По текущему фильтру или поисковому запросу ничего не найдено.'}
+                </p>
+              </div>
+            )}
+
             {filteredChannels.map((channel) => (
               <div
                 key={channel.id}
@@ -426,30 +835,55 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
                     : 'border-slate-900/60 opacity-60 bg-slate-950/40'
                 }`}
               >
-                {/* Header */}
+                {/* Header with Avatar & Details */}
                 <div>
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-semibold text-sm text-slate-100 truncate block">
-                          {channel.title}
-                        </span>
-                        {renderCategoryBadge(channel.category)}
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      {channel.avatarUrl ? (
+                        <img
+                          src={channel.avatarUrl}
+                          alt={channel.title}
+                          className="w-9 h-9 rounded-xl object-cover border border-slate-700/80 shrink-0"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-emerald-400 font-bold font-mono text-xs">
+                          {channel.title.slice(0, 1).toUpperCase()}
+                        </div>
+                      )}
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-sm text-slate-100 truncate block">
+                            {channel.title}
+                          </span>
+                          {renderCategoryBadge(channel.category)}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <a
+                            href={`https://t.me/${channel.username.replace('@', '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs font-mono text-emerald-400 hover:underline inline-block"
+                          >
+                            {channel.username}
+                          </a>
+                          {channel.active && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-mono">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                              Онлайн
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <a
-                        href={`https://t.me/${channel.username.replace('@', '')}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs font-mono text-emerald-400 hover:underline inline-block mt-0.5"
-                      >
-                        {channel.username}
-                      </a>
                     </div>
 
                     {/* Active toggle button */}
                     <button
                       onClick={() => handleToggleChannel(channel.id)}
-                      className={`p-1.5 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
+                      className={`p-1.5 rounded-lg text-xs font-mono transition-colors cursor-pointer shrink-0 ${
                         channel.active
                           ? 'bg-emerald-950/60 text-emerald-400 hover:bg-emerald-900/60 border border-emerald-800/40'
                           : 'bg-slate-800/60 text-slate-400 hover:bg-slate-700/60 border border-slate-700/40'
@@ -472,7 +906,7 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
                   <div className="bg-slate-950/70 border border-slate-800/60 rounded-lg p-2 text-[11px]">
                     <div className="flex items-center gap-1 text-slate-400 text-[10px] uppercase font-mono">
                       <Clock className="w-3 h-3 text-slate-500" />
-                      <span>Последний перехват:</span>
+                      <span>Последний перехват онлайн:</span>
                     </div>
                     <p className="text-slate-300 font-medium truncate mt-0.5">
                       {channel.lastAlertDetected}
@@ -483,10 +917,10 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
                 {/* Footer Metrics & Actions */}
                 <div className="pt-2 border-t border-slate-800/70 flex items-center justify-between gap-2 text-xs">
                   <div className="flex items-center gap-3 text-slate-400 text-[11px] font-mono">
-                    <span title="Количество спарсенных сообщений">
+                    <span title="Количество спарсенных сообщений онлайн">
                       📊 {channel.parsedMessagesCount} постов
                     </span>
-                    <span title="Интервал проверки">
+                    <span title="Интервал проверки онлайн">
                       ⏱ {channel.parseIntervalSeconds}с
                     </span>
                   </div>
@@ -497,10 +931,10 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
                       onClick={() => handleTestParseChannel(channel)}
                       disabled={parsingChannelId === channel.id}
                       className="px-2.5 py-1 rounded-md bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border border-amber-800/50 text-[11px] font-mono font-medium flex items-center gap-1 transition-colors cursor-pointer"
-                      title="Выполнить тестовый перехват сообщения прямо сейчас"
+                      title="Выполнить перехват сообщений онлайн прямо сейчас"
                     >
                       <Zap className={`w-3 h-3 ${parsingChannelId === channel.id ? 'animate-bounce' : ''}`} />
-                      <span>{parsingChannelId === channel.id ? '...' : 'Тест'}</span>
+                      <span>{parsingChannelId === channel.id ? 'Парсинг...' : 'Спарсить'}</span>
                     </button>
 
                     {/* Edit */}
@@ -525,14 +959,6 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
               </div>
             ))}
           </div>
-
-          {filteredChannels.length === 0 && (
-            <div className="bg-slate-900/40 rounded-xl border border-slate-800 p-8 text-center text-slate-400 space-y-2">
-              <Radio className="w-8 h-8 mx-auto text-slate-600 mb-2" />
-              <p className="font-medium text-slate-300">Каналы не найдены</p>
-              <p className="text-xs text-slate-500">Попробуйте изменить параметры поиска или добавить новый канал.</p>
-            </div>
-          )}
         </div>
       )}
 
@@ -737,11 +1163,11 @@ export const ChannelsTab: React.FC<ChannelsTabProps> = ({ onRefreshFeed, onToast
             <form onSubmit={handleSaveChannel} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-mono text-slate-300 font-semibold">
-                  Username или ссылка канала <span className="text-rose-400">*</span>
+                  Telegram-никнейм канала (обязательно с '@') <span className="text-rose-400">*</span>
                 </label>
                 <input
                   type="text"
-                  placeholder="@kyiv_alerts_oper или t.me/kyiv_alerts_oper"
+                  placeholder="@kyiv_alerts_oper (только латинские буквы, цифры и _)"
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500/60 font-mono"

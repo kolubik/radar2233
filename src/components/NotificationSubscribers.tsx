@@ -235,21 +235,32 @@ export const NotificationSubscribers: React.FC<NotificationSubscribersProps> = (
                     {sub.active ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
                   </div>
 
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-bold text-slate-200 truncate">
                         {sub.firstName || 'Оператор'}
                       </span>
                       {sub.username && (
                         <span className="text-[11px] text-slate-400">@{sub.username}</span>
                       )}
+                      {sub.isDemo && (
+                        <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                          ДЕМО
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                    <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5 flex-wrap">
                       <span>ID: {sub.chatId}</span>
                       <span>•</span>
                       <span className="text-amber-400">{sub.minSeverity}</span>
+                      {sub.lastDeliveryError && (
+                        <>
+                          <span>•</span>
+                          <span className="text-rose-400 truncate max-w-[140px]" title={sub.lastDeliveryError}>
+                            ⚠️ {sub.lastDeliveryError}
+                          </span>
+                        </>
+                      )}
                     </div>
-                  </div>
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">

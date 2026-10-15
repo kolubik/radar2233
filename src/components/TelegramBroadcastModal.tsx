@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ParsedAlert, FilterConfig } from '../types.ts';
 import { tacticalAudio } from '../utils/audio.ts';
+import { safeFetchJson, formatTelegramApiError } from '../utils/api.ts';
 import {
   Send,
   X,
@@ -78,7 +79,7 @@ export const TelegramBroadcastModal: React.FC<TelegramBroadcastModalProps> = ({
     setSuccessMsg(null);
 
     try {
-      const res = await fetch(`/api/radar/broadcast/${alert.id}`, {
+      const res = await safeFetchJson(`/api/radar/broadcast/${alert.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -89,14 +90,16 @@ export const TelegramBroadcastModal: React.FC<TelegramBroadcastModalProps> = ({
         }),
       });
 
-      const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Ошибка отправки через Telegram API');
+        throw new Error(
+          formatTelegramApiError(res.error, { channel: targetChannelId })
+        );
       }
 
       tacticalAudio.playCleanSound();
-      setSuccessMsg(`✅ Успешно отправлено в Telegram! ID сообщения: #${data.telegramMessageId}`);
-      onBroadcastSuccess(alert.id, data.telegramMessageId);
+      const msgId = res.data?.telegramMessageId || '';
+      setSuccessMsg(`✅ Успешно отправлено в Telegram! ID сообщения: #${msgId}`);
+      onBroadcastSuccess(alert.id, msgId);
 
       setTimeout(() => {
         onClose();

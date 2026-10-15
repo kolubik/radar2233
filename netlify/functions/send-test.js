@@ -49,9 +49,27 @@ export const handler = async (event, context) => {
       }
     }
 
-    const botToken = (body.botToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
-    const targetChatId = (body.chatId || body.targetChannelId || body.target || process.env.TELEGRAM_TARGET_CHANNEL || '').trim();
+    let botToken = (body.botToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    let targetChatId = (body.chatId || body.targetChannelId || body.target || process.env.TELEGRAM_TARGET_CHANNEL || '').trim();
     const customText = body.customText;
+
+    // Очистка токена
+    botToken = botToken.replace(/^["'`]|["'`]$/g, '').trim();
+    botToken = botToken.replace(/^https?:\/\/api\.telegram\.org\/bot/i, '');
+    if (/^bot\d+:/i.test(botToken)) {
+      botToken = botToken.slice(3);
+    } else if (/^bot\s+/i.test(botToken)) {
+      botToken = botToken.replace(/^bot\s+/i, '');
+    }
+
+    // Очистка ID / username канала
+    targetChatId = targetChatId.replace(/^["'`]|["'`]$/g, '').trim();
+    targetChatId = targetChatId.replace(/^https?:\/\/(?:www\.)?t\.me\//i, '').replace(/^t\.me\//i, '').trim();
+    if (/^\d{8,}$/.test(targetChatId)) {
+      targetChatId = `-100${targetChatId}`;
+    } else if (!targetChatId.startsWith('@') && !targetChatId.startsWith('-') && !/^-?\d+$/.test(targetChatId)) {
+      if (targetChatId.length > 0) targetChatId = `@${targetChatId}`;
+    }
 
     if (!botToken) {
       return {
@@ -83,7 +101,7 @@ export const handler = async (event, context) => {
     const endpoint = `https://api.telegram.org/bot${botToken}/sendMessage`;
     const response = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({
         chat_id: targetChatId,
         text: messageText,
@@ -93,22 +111,46 @@ export const handler = async (event, context) => {
       signal: AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined,
     });
 
-    const data = await response.json();
+    const rawText = await response.text();
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      if (response.status === 401) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            error:
+              '❌ Ошибка токена (401 Unauthorized): Telegram отклонил токен бота!\nОбратите внимание: это ошибка САМОГО ТОКЕНА (в @BotFather), а НЕ прав администратора в канале. Проверьте токен в @BotFather.',
+          }),
+        };
+      }
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          success: false,
+          error: `Telegram API вернул не-JSON ответ (${response.status}): ${rawText.slice(0, 120)}`,
+        }),
+      };
+    }
 
     if (!data.ok) {
-      // Telegram Bot API возвратил ошибку (например, бот не админ или чат не найден)
       let readableError = data.description || 'Неизвестная ошибка Telegram API';
 
-      if (readableError.includes('chat not found')) {
-        readableError = `Канал не найден (${targetChatId}). Проверьте правильность @username или числового ID канала (для закрытых каналов ID должен начинаться с -100...).`;
+      if (readableError.includes('Unauthorized') || readableError.includes('401')) {
+        readableError =
+          '❌ Ошибка токена (401 Unauthorized): Telegram отклонил токен бота!\nОбратите внимание: это ошибка САМОГО ТОКЕНА (в @BotFather), а НЕ прав администратора в канале.\nПроверьте: скопируйте токен заново из @BotFather целиком без приставки "bot".';
+      } else if (readableError.includes('chat not found')) {
+        readableError = `🔍 Канал не найден (${targetChatId}). Проверьте правильность @username или числового ID канала (-100...).`;
       } else if (
         readableError.includes('kicked') ||
         readableError.includes('bot is not a member') ||
         readableError.includes('have no rights to send a message')
       ) {
-        readableError = `Бот не состоит в канале или был удален. Убедитесь, что в администраторы добавлен именно этот бот, и выдайте право «Публикация сообщений».`;
-      } else if (readableError.includes('Unauthorized')) {
-        readableError = `Неверный токен Telegram бота (401 Unauthorized). Проверьте токен в @BotFather.`;
+        readableError = `⚠️ Ошибка прав в канале (403 Forbidden): Бот не имеет прав публиковать сообщения в канале (${targetChatId}). Добавьте именно этого бота в администраторы канала и включите право «Публикация сообщений».`;
       }
 
       return {

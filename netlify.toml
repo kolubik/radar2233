@@ -68,6 +68,51 @@
   status = 200
   force = true
 
+# Verify Bot endpoint
+[[redirects]]
+  from = "/verify"
+  to = "/.netlify/functions/verify"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/verify"
+  to = "/.netlify/functions/verify"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/bot/verify"
+  to = "/.netlify/functions/verify"
+  status = 200
+  force = true
+
+# Bot Status endpoint
+[[redirects]]
+  from = "/status"
+  to = "/.netlify/functions/status"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/bot/status"
+  to = "/.netlify/functions/status"
+  status = 200
+  force = true
+
+# Central Error Telemetry endpoint
+[[redirects]]
+  from = "/api/analytics/errors"
+  to = "/.netlify/functions/analytics-errors"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/analytics/errors/*"
+  to = "/.netlify/functions/analytics-errors"
+  status = 200
+  force = true
+
 # General /api/* routing to netlify/functions/*
 [[redirects]]
   from = "/api/*"

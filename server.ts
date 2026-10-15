@@ -72,6 +72,9 @@ interface TelegramSubscriber {
   subscribedRegions: string[]; // empty means all
   active: boolean;
   createdAt: number;
+  isDemo?: boolean;
+  lastDeliveryError?: string | null;
+  lastDeliveredAt?: number | null;
 }
 
 interface TelegramConfig {
@@ -184,11 +187,12 @@ let telegramSubscribers: TelegramSubscriber[] = [
   {
     chatId: 'demo-user-1',
     username: 'tactical_operator',
-    firstName: 'Оператор Дмитро',
+    firstName: 'Оператор Дмитро (Демо)',
     minSeverity: 'ALL',
     subscribedTypes: ['MISSILE', 'BALLISTIC', 'DRONE', 'AVIATION'],
     subscribedRegions: [],
     active: true,
+    isDemo: true,
     createdAt: Date.now() - 1000 * 60 * 60 * 24,
   },
 ];
@@ -255,6 +259,24 @@ let taskExecutionLogs: TaskExecutionLog[] = [
   },
 ];
 
+export interface ServerErrorTelemetry {
+  id: string;
+  timestamp: number;
+  timeString: string;
+  name: string;
+  message: string;
+  stack?: string;
+  componentStack?: string;
+  module: string;
+  severity: string;
+  url: string;
+  userAgent: string;
+  metadata?: Record<string, any>;
+  handled: boolean;
+}
+
+let serverErrorTelemetryLogs: ServerErrorTelemetry[] = [];
+
 export interface ParsingChannel {
   id: string;
   username: string;
@@ -268,95 +290,15 @@ export interface ParsingChannel {
   lastParsedAt?: number;
   lastAlertDetected?: string;
   notes?: string;
+  avatarUrl?: string;
+  description?: string;
+  seenPostIds?: string[];
   sqlRowId?: number;
 }
 
-let parsingChannels: ParsingChannel[] = [
-  {
-    id: 'ch-kpszsu',
-    username: '@kpszsu',
-    title: 'Повітряні Сили ЗСУ',
-    category: 'AIR_FORCE',
-    active: true,
-    priority: 'HIGH',
-    parseIntervalSeconds: 5,
-    autoForward: true,
-    parsedMessagesCount: 48,
-    lastParsedAt: Date.now() - 1000 * 60 * 2,
-    lastAlertDetected: 'Взлет 4х Ту-95мс с аэродрома Оленья',
-    notes: 'Официальные сводки Командования Воздушных Сил',
-  },
-  {
-    id: 'ch-vanek',
-    username: '@vanek_nikolaev',
-    title: 'Николаевский Ванёк',
-    category: 'RADAR',
-    active: true,
-    priority: 'HIGH',
-    parseIntervalSeconds: 5,
-    autoForward: true,
-    parsedMessagesCount: 112,
-    lastParsedAt: Date.now() - 1000 * 60 * 4,
-    lastAlertDetected: 'Шахеды через Берислав на Снигиревку',
-    notes: 'Высокая оперативность, маршруты БПЛА и векторы',
-  },
-  {
-    id: 'ch-kyiv-alerts',
-    username: '@kyiv_alerts_oper',
-    title: 'Оперативный Киев / Радар',
-    category: 'REGIONAL',
-    active: true,
-    priority: 'HIGH',
-    parseIntervalSeconds: 10,
-    autoForward: true,
-    parsedMessagesCount: 89,
-    lastParsedAt: Date.now() - 1000 * 60 * 7,
-    lastAlertDetected: 'БПЛА на Белую Церковь / Васильков',
-    notes: 'Сводки по Киеву, Фастову, Броварам, ПВО',
-  },
-  {
-    id: 'ch-dnipro-monitor',
-    username: '@dnipro_monitor',
-    title: 'Днепр Монитор & КАБ',
-    category: 'REGIONAL',
-    active: true,
-    priority: 'NORMAL',
-    parseIntervalSeconds: 15,
-    autoForward: true,
-    parsedMessagesCount: 63,
-    lastParsedAt: Date.now() - 1000 * 60 * 12,
-    lastAlertDetected: 'Угроза КАБ по Запорожскому району',
-    notes: 'Южное и восточное направление, пуски КАБ/ФАБ',
-  },
-  {
-    id: 'ch-air-raid-ua',
-    username: '@air_raid_ua',
-    title: 'Карта воздушных тревог Украины',
-    category: 'OFFICIAL',
-    active: true,
-    priority: 'NORMAL',
-    parseIntervalSeconds: 15,
-    autoForward: false,
-    parsedMessagesCount: 34,
-    lastParsedAt: Date.now() - 1000 * 60 * 20,
-    lastAlertDetected: 'Воздушная тревога в Черниговской области',
-    notes: 'Фиксация сирен и отбоев',
-  },
-  {
-    id: 'ch-odesa-oper',
-    username: '@odesa_operatyvna',
-    title: 'Одесса Оперативная / Черное Море',
-    category: 'REGIONAL',
-    active: false,
-    priority: 'LOW',
-    parseIntervalSeconds: 20,
-    autoForward: false,
-    parsedMessagesCount: 19,
-    lastParsedAt: Date.now() - 1000 * 60 * 50,
-    lastAlertDetected: 'Пуски с мыса Тарханкут / Крым',
-    notes: 'Черноморский регион, Затока, Одесса',
-  },
-];
+// In-Memory Telegram channels monitored by user (NO automatic presets added)
+let parsingChannels: ParsingChannel[] = [];
+
 
 const stats = {
   totalParsed: 0,
@@ -481,7 +423,7 @@ function loadDatabaseFromDisk() {
         if (data.telegramConfig.botUsername) telegramConfig.botUsername = data.telegramConfig.botUsername;
         if (data.telegramConfig.botFirstName) telegramConfig.botFirstName = data.telegramConfig.botFirstName;
       }
-      if (Array.isArray(data.parsingChannels) && data.parsingChannels.length > 0) {
+      if (Array.isArray(data.parsingChannels)) {
         parsingChannels = data.parsingChannels;
       }
       if (Array.isArray(data.telegramSubscribers) && data.telegramSubscribers.length > 0) {
@@ -616,10 +558,98 @@ function escapeTelegramHtml(text: string | null | undefined): string {
     .replace(/>/g, '&gt;');
 }
 
+// Telegram Token and Chat ID sanitizers
+function cleanTelegramBotToken(raw: string | null | undefined): string {
+  if (!raw) return '';
+  let token = String(raw).trim();
+  token = token.replace(/^["'`]|["'`]$/g, '').trim();
+  token = token.replace(/^https?:\/\/api\.telegram\.org\/bot/i, '');
+  if (/^bot\d+:/i.test(token)) {
+    token = token.slice(3);
+  } else if (/^bot\s+/i.test(token)) {
+    token = token.replace(/^bot\s+/i, '');
+  }
+  return token.trim();
+}
+
+function cleanTelegramChatId(raw: string | null | undefined): string {
+  if (!raw) return '';
+  let chat = String(raw).trim();
+  chat = chat.replace(/^["'`]|["'`]$/g, '').trim();
+  chat = chat.replace(/^https?:\/\/(?:www\.)?t\.me\//i, '').replace(/^t\.me\//i, '').trim();
+  if (/^\d{8,}$/.test(chat)) {
+    chat = `-100${chat}`;
+  } else if (!chat.startsWith('@') && !chat.startsWith('-') && !/^-?\d+$/.test(chat)) {
+    if (chat.length > 0) {
+      chat = `@${chat}`;
+    }
+  }
+  return chat;
+}
+
+function isVirtualOrDemoSubscriber(chatId: string | null | undefined): boolean {
+  if (!chatId) return true;
+  const s = String(chatId).trim();
+  return (
+    s.startsWith('demo-') ||
+    s.startsWith('test-') ||
+    s === 'demo_user' ||
+    s === 'demo-user-1' ||
+    (!s.startsWith('@') && !/^-?\d+$/.test(s) && s.includes('-'))
+  );
+}
+
+function formatTelegramApiError(
+  rawError: string | null | undefined,
+  context?: { token?: string; channel?: string }
+): string {
+  const err = (rawError || '').trim();
+  if (!err) return 'Неизвестная ошибка Telegram API';
+
+  if (err.includes('Unauthorized') || err.includes('401')) {
+    return (
+      '❌ Ошибка токена (401 Unauthorized): Telegram отклонил токен бота!\n' +
+      'Обратите внимание: это ошибка САМОГО ТОКЕНА (в @BotFather), а НЕ прав администратора в канале.\n' +
+      'Проверьте токен в @BotFather: скопируйте его целиком без слова "bot" и пробелов.'
+    );
+  }
+
+  if (
+    err.includes('bot is not a member') ||
+    err.includes('have no rights to send a message') ||
+    err.includes('not enough rights') ||
+    err.includes('need administrator rights') ||
+    err.includes('kicked') ||
+    err.includes('Forbidden')
+  ) {
+    const ch = context?.channel ? ` «${context.channel}»` : '';
+    return (
+      `⚠️ Ошибка прав в канале (403 Forbidden): Бот не имеет права публиковать сообщения в канале${ch}!\n` +
+      'Добавьте вашего бота в администраторы канала и включите право «Публикация сообщений».'
+    );
+  }
+
+  if (err.includes('chat not found')) {
+    const ch = context?.channel ? ` (${context.channel})` : '';
+    return (
+      `🔍 Канал не найден${ch}. Для публичного канала укажите @username, для закрытого — числовой ID вида -100xxxxxxxxxx.`
+    );
+  }
+
+  if (err.includes('JSON.parse') || err.includes('unexpected character') || err.includes('<!doctype') || err.includes('<html')) {
+    return '🌐 Telegram API или прокси вернул HTML вместо JSON. Проверьте правильность токена бота.';
+  }
+
+  return err;
+}
+
 // Telegram Bot API Helper: Send message to chat/channel
-async function sendTelegramMessage(botToken: string, chatId: string, text: string, replyMarkup?: any, replyParameters?: any) {
+async function sendTelegramMessage(rawBotToken: string, rawChatId: string, text: string, replyMarkup?: any, replyParameters?: any) {
+  const botToken = cleanTelegramBotToken(rawBotToken);
+  const chatId = cleanTelegramChatId(rawChatId);
+
   if (!botToken || !chatId) {
-    throw new Error('Telegram botToken and targetChannelId are required');
+    throw new Error('Укажите токен бота и целевой канал');
   }
 
   const endpoint = `https://api.telegram.org/bot${botToken}/sendMessage`;
@@ -639,20 +669,33 @@ async function sendTelegramMessage(botToken: string, chatId: string, text: strin
 
   const response = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(bodyPayload),
   });
 
-  const data = await response.json();
+  const rawText = await response.text();
+  let data: any;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    if (response.status === 401) {
+      throw new Error(formatTelegramApiError('401 Unauthorized', { token: botToken }));
+    }
+    throw new Error(`Telegram API вернул не-JSON ответ (${response.status}): ${rawText.slice(0, 120)}`);
+  }
+
   if (!data.ok) {
-    throw new Error(data.description || 'Failed to send message via Telegram API');
+    throw new Error(formatTelegramApiError(data.description || 'Ошибка Telegram API', { token: botToken, channel: chatId }));
   }
 
   return data.result;
 }
 
 // Telegram Bot API Helper: Forward original message natively
-async function forwardTelegramMessage(botToken: string, toChatId: string, fromChatId: string | number, messageId: number) {
+async function forwardTelegramMessage(rawBotToken: string, rawToChatId: string, fromChatId: string | number, messageId: number) {
+  const botToken = cleanTelegramBotToken(rawBotToken);
+  const toChatId = cleanTelegramChatId(rawToChatId);
+
   if (!botToken || !toChatId || !fromChatId || !messageId) {
     throw new Error('Параметры botToken, toChatId, fromChatId и messageId обязательны для forwardMessage');
   }
@@ -660,7 +703,7 @@ async function forwardTelegramMessage(botToken: string, toChatId: string, fromCh
   const endpoint = `https://api.telegram.org/bot${botToken}/forwardMessage`;
   const response = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({
       chat_id: toChatId,
       from_chat_id: fromChatId,
@@ -668,9 +711,19 @@ async function forwardTelegramMessage(botToken: string, toChatId: string, fromCh
     }),
   });
 
-  const data = await response.json();
+  const rawText = await response.text();
+  let data: any;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    if (response.status === 401) {
+      throw new Error(formatTelegramApiError('401 Unauthorized', { token: botToken }));
+    }
+    throw new Error(`Telegram API вернул не-JSON ответ (${response.status}): ${rawText.slice(0, 120)}`);
+  }
+
   if (!data.ok) {
-    throw new Error(data.description || 'Ошибка вызова forwardMessage в Telegram API');
+    throw new Error(formatTelegramApiError(data.description || 'Ошибка Telegram API', { token: botToken, channel: toChatId }));
   }
 
   return data.result;
@@ -678,13 +731,16 @@ async function forwardTelegramMessage(botToken: string, toChatId: string, fromCh
 
 // Telegram Bot API Helper: Copy original message with cleaned text caption / quote
 async function copyTelegramMessage(
-  botToken: string,
-  toChatId: string,
+  rawBotToken: string,
+  rawToChatId: string,
   fromChatId: string | number,
   messageId: number,
   caption?: string,
   replyMarkup?: any
 ) {
+  const botToken = cleanTelegramBotToken(rawBotToken);
+  const toChatId = cleanTelegramChatId(rawToChatId);
+
   if (!botToken || !toChatId || !fromChatId || !messageId) {
     throw new Error('Параметры botToken, toChatId, fromChatId и messageId обязательны для copyMessage');
   }
@@ -706,30 +762,53 @@ async function copyTelegramMessage(
 
   const response = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(bodyPayload),
   });
 
-  const data = await response.json();
+  const rawText = await response.text();
+  let data: any;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    if (response.status === 401) {
+      throw new Error(formatTelegramApiError('401 Unauthorized', { token: botToken }));
+    }
+    throw new Error(`Telegram API вернул не-JSON ответ (${response.status}): ${rawText.slice(0, 120)}`);
+  }
+
   if (!data.ok) {
-    throw new Error(data.description || 'Ошибка вызова copyMessage в Telegram API');
+    throw new Error(formatTelegramApiError(data.description || 'Ошибка Telegram API', { token: botToken, channel: toChatId }));
   }
 
   return data.result;
 }
 
 // Verify Telegram Bot Token
-async function verifyTelegramBot(botToken: string) {
+async function verifyTelegramBot(rawBotToken: string) {
+  const botToken = cleanTelegramBotToken(rawBotToken);
   if (!botToken) {
     throw new Error('Токен бота не указан');
   }
 
   const endpoint = `https://api.telegram.org/bot${botToken}/getMe`;
-  const response = await fetch(endpoint);
-  const data = await response.json();
+  const response = await fetch(endpoint, {
+    headers: { Accept: 'application/json' },
+  });
+
+  const rawText = await response.text();
+  let data: any;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    if (response.status === 401) {
+      throw new Error(formatTelegramApiError('401 Unauthorized', { token: botToken }));
+    }
+    throw new Error(`Telegram API вернул не-JSON ответ (${response.status}): ${rawText.slice(0, 120)}`);
+  }
 
   if (!data.ok) {
-    throw new Error(data.description || 'Неверный токен бота Telegram');
+    throw new Error(formatTelegramApiError(data.description || 'Неверный токен бота Telegram', { token: botToken }));
   }
 
   return {
@@ -1319,6 +1398,12 @@ async function processIncomingMessage(
       for (const subscriber of telegramSubscribers) {
         if (!subscriber.active) continue;
 
+        // Skip virtual / demo subscribers from real Telegram HTTP requests
+        if (subscriber.isDemo || isVirtualOrDemoSubscriber(subscriber.chatId)) {
+          subscriber.lastDeliveredAt = Date.now();
+          continue;
+        }
+
         const subMinLevel =
           subscriber.minSeverity === 'ALL'
             ? 0
@@ -1340,10 +1425,28 @@ async function processIncomingMessage(
           continue;
         }
 
-        // Send to subscriber
-        sendTelegramMessage(telegramConfig.botToken, subscriber.chatId, broadcastMsg, inlineMarkup).catch((err) => {
-          console.error(`Failed to send alert to subscriber ${subscriber.chatId}:`, err);
-        });
+        // Send to real subscriber safely
+        sendTelegramMessage(telegramConfig.botToken, subscriber.chatId, broadcastMsg, inlineMarkup)
+          .then(() => {
+            subscriber.lastDeliveredAt = Date.now();
+            subscriber.lastDeliveryError = null;
+          })
+          .catch((err: any) => {
+            const errDetail = err?.message || String(err);
+            subscriber.lastDeliveryError = errDetail;
+            console.warn(`[Telegram Delivery] Alert to subscriber ${subscriber.chatId} skipped: ${errDetail}`);
+            // If subscriber chat does not exist, user blocked bot, or bot is not allowed, auto-pause active status to avoid repetitive failures
+            if (
+              errDetail.includes('не найден') ||
+              errDetail.includes('chat not found') ||
+              errDetail.includes('bot was blocked') ||
+              errDetail.includes('user is deactivated') ||
+              errDetail.includes('Forbidden')
+            ) {
+              subscriber.active = false;
+              saveDatabaseToDisk();
+            }
+          });
       }
     }
   }
@@ -1447,10 +1550,12 @@ app.post('/api/bot/toggle-polling', (req: Request, res: Response) => {
 
 // Test send message to Telegram channel
 app.post(['/api/bot/send-test', '/send-test', '/api/send-test'], async (req: Request, res: Response) => {
+  let target = '';
+  let token = '';
   try {
     const { chatId, customText, botToken } = req.body;
-    const target = (chatId || telegramConfig.targetChannelId || '').trim();
-    const token = (botToken || telegramConfig.botToken || '').trim();
+    target = (chatId || telegramConfig.targetChannelId || '').trim();
+    token = (botToken || telegramConfig.botToken || '').trim();
 
     if (!token) {
       return res.status(400).json({ success: false, error: 'Токен Telegram бота не настроен' });
@@ -1470,16 +1575,7 @@ app.post(['/api/bot/send-test', '/send-test', '/api/send-test'], async (req: Req
       chat: tgResult.chat,
     });
   } catch (err: any) {
-    let readableError = err.message || 'Ошибка Telegram API';
-    if (readableError.includes('chat not found')) {
-      readableError = `Канал не найден. Проверьте @username или числовой ID канала (-100...).`;
-    } else if (
-      readableError.includes('kicked') ||
-      readableError.includes('bot is not a member') ||
-      readableError.includes('have no rights to send a message')
-    ) {
-      readableError = `Бот не состоит в канале или был удален. Убедитесь, что в администраторы добавлен именно этот бот, и выдайте право «Публикация сообщений».`;
-    }
+    const readableError = formatTelegramApiError(err.message, { token, channel: target });
     res.status(400).json({ success: false, error: readableError });
   }
 });
@@ -2071,6 +2167,77 @@ app.get('/api/radar/analytics-export', (req: Request, res: Response) => {
   }
 });
 
+// 8.2 Central Error Telemetry Ingestion & Retrieval API
+app.post(['/api/analytics/errors', '/api/errors'], (req: Request, res: Response) => {
+  try {
+    const body = req.body || {};
+    if (!body.message && !body.name) {
+      return res.status(400).json({ error: 'Необходимо указать имя или сообщение об ошибке' });
+    }
+
+    const record: ServerErrorTelemetry = {
+      id: String(body.id || `ERR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`),
+      timestamp: Number(body.timestamp) || Date.now(),
+      timeString: String(body.timeString || new Date().toLocaleTimeString('ru-RU')),
+      name: String(body.name || 'Error'),
+      message: String(body.message || 'Unknown error'),
+      stack: body.stack ? String(body.stack) : undefined,
+      componentStack: body.componentStack ? String(body.componentStack) : undefined,
+      module: String(body.module || 'Клиентский UI'),
+      severity: String(body.severity || 'HIGH'),
+      url: String(body.url || ''),
+      userAgent: String(body.userAgent || req.headers['user-agent'] || ''),
+      metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : undefined,
+      handled: Boolean(body.handled !== false),
+    };
+
+    serverErrorTelemetryLogs.unshift(record);
+    if (serverErrorTelemetryLogs.length > 100) {
+      serverErrorTelemetryLogs = serverErrorTelemetryLogs.slice(0, 100);
+    }
+
+    console.error(
+      `[RadarTG Telemetry Server] [${record.severity}] [${record.module}] ${record.name}: ${record.message} (ID: ${record.id})`
+    );
+
+    res.status(201).json({
+      ok: true,
+      id: record.id,
+      totalLogged: serverErrorTelemetryLogs.length,
+      loggedAt: record.timestamp,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get(['/api/analytics/errors', '/api/errors'], (req: Request, res: Response) => {
+  res.json({
+    ok: true,
+    errors: serverErrorTelemetryLogs,
+    count: serverErrorTelemetryLogs.length,
+  });
+});
+
+app.post(['/api/analytics/errors/clear', '/api/errors/clear'], (req: Request, res: Response) => {
+  serverErrorTelemetryLogs = [];
+  console.log('[RadarTG Telemetry Server] Центральный журнал ошибок очищен оператором.');
+  res.json({
+    ok: true,
+    message: 'Центральный журнал ошибок успешно очищен',
+    count: 0,
+  });
+});
+
+app.delete(['/api/analytics/errors', '/api/errors'], (req: Request, res: Response) => {
+  serverErrorTelemetryLogs = [];
+  res.json({
+    ok: true,
+    message: 'Центральный журнал ошибок успешно очищен',
+    count: 0,
+  });
+});
+
 // 9. Tactical Automation Tasks & Threat Correlation API
 app.get('/api/tasks', (req: Request, res: Response) => {
   res.json({
@@ -2191,53 +2358,397 @@ app.get('/api/database/status', (req: Request, res: Response) => {
   });
 });
 
+// ================= Telegram Online Web Preview Parser =================
+function decodeHtmlEntities(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)));
+}
+
+function cleanChannelUsername(raw: string | null | undefined): string {
+  if (!raw) return '';
+  let ch = String(raw).trim();
+  ch = ch.replace(/^https?:\/\/(?:www\.)?t\.me\/(?:s\/)?/i, '');
+  ch = ch.replace(/^@+/, '');
+  ch = ch.replace(/\/.*$/, '').trim();
+  return ch;
+}
+
+interface ParsedTgPost {
+  postTag: string; // e.g. "zahid_informue/7510"
+  numId: number;
+  timeIso: string;
+  timestamp: number;
+  text: string;
+}
+
+const globalSeenPostTags = new Set<string>();
+
+async function fetchTelegramChannelOnlineInfo(rawUsername: string) {
+  const cleanUsername = cleanChannelUsername(rawUsername);
+  if (!cleanUsername) {
+    throw new Error('Никнейм канала пуст или некорректен');
+  }
+
+  const url = `https://t.me/s/${cleanUsername}`;
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'uk,ru,en;q=0.9',
+    },
+  });
+
+  if (!response.ok && response.status === 404) {
+    throw new Error(`Канал @${cleanUsername} не найден в Telegram (HTTP 404)`);
+  }
+
+  const html = await response.text();
+
+  // Check if channel is missing or redirected to contact placeholder without posts
+  const isMissing =
+    (html.includes('Telegram: Contact @') || html.includes('tgme_page_icon')) &&
+    !html.includes('tgme_widget_message');
+
+  if (isMissing) {
+    throw new Error(`Канал @${cleanUsername} не найден в Telegram или является закрытым`);
+  }
+
+  // Extract metadata
+  const ogTitleMatch = html.match(/<meta property="og:title" content="([^"]+)"/i);
+  const ogDescMatch = html.match(/<meta property="og:description" content="([^"]+)"/i);
+  const ogImageMatch = html.match(/<meta property="og:image" content="([^"]+)"/i);
+
+  const title = ogTitleMatch ? decodeHtmlEntities(ogTitleMatch[1]).trim() : `@${cleanUsername}`;
+  const description = ogDescMatch ? decodeHtmlEntities(ogDescMatch[1]).trim() : '';
+  const avatarUrl = ogImageMatch ? ogImageMatch[1].trim() : undefined;
+
+  // Auto-categorize
+  const lowerContent = (title + ' ' + description).toLowerCase();
+  let category: 'AIR_FORCE' | 'RADAR' | 'REGIONAL' | 'OFFICIAL' | 'GENERAL' = 'REGIONAL';
+  if (lowerContent.includes('повітряні сили') || lowerContent.includes('пс зсу') || lowerContent.includes('авіація')) {
+    category = 'AIR_FORCE';
+  } else if (lowerContent.includes('радар') || lowerContent.includes('шахед') || lowerContent.includes('бпла')) {
+    category = 'RADAR';
+  } else if (
+    lowerContent.includes('тривог') ||
+    lowerContent.includes('сирен') ||
+    lowerContent.includes('єтривога') ||
+    lowerContent.includes('офіційн')
+  ) {
+    category = 'OFFICIAL';
+  }
+
+  return {
+    cleanUsername,
+    title,
+    description,
+    avatarUrl,
+    category,
+    html,
+  };
+}
+
+function extractPostsFromTgHtml(html: string): ParsedTgPost[] {
+  const posts: ParsedTgPost[] = [];
+  const msgBlockRegex =
+    /<div class="tgme_widget_message[^"]*"[^>]*data-post="([^"]+)"[\s\S]*?(?=<div class="tgme_widget_message[^"]*"[^>]*data-post=|$)/gi;
+  let blockMatch: RegExpExecArray | null;
+
+  while ((blockMatch = msgBlockRegex.exec(html)) !== null) {
+    const block = blockMatch[0];
+    const postTag = blockMatch[1]; // e.g. zahid_informue/7510
+    const timeMatch = block.match(/<time[^>]*datetime="([^"]+)"/i);
+    const textMatch = block.match(/<div class="tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+
+    if (textMatch) {
+      const rawText = textMatch[1]
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n')
+        .replace(/<[^>]+>/g, '');
+      const clean = decodeHtmlEntities(rawText).trim();
+      if (clean) {
+        const numId = parseInt(postTag.split('/')[1] || '0', 10);
+        const timeIso = timeMatch ? timeMatch[1] : new Date().toISOString();
+        const timestamp = new Date(timeIso).getTime() || Date.now();
+        posts.push({
+          postTag,
+          numId,
+          timeIso,
+          timestamp,
+          text: clean,
+        });
+      }
+    }
+  }
+  return posts;
+}
+
+async function parseOnlineChannel(channel: ParsingChannel, forceLatest = false): Promise<ParsedAlert | null> {
+  const cleanUsername = cleanChannelUsername(channel.username);
+  if (!cleanUsername) return null;
+
+  const url = `https://t.me/s/${cleanUsername}`;
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ошибка подключения к Telegram (HTTP ${response.status})`);
+  }
+
+  const html = await response.text();
+  const posts = extractPostsFromTgHtml(html);
+
+  if (posts.length === 0) {
+    return null;
+  }
+
+  // Update title / avatar if not set yet
+  if (!channel.avatarUrl) {
+    const ogImageMatch = html.match(/<meta property="og:image" content="([^"]+)"/i);
+    if (ogImageMatch) channel.avatarUrl = ogImageMatch[1].trim();
+  }
+  if (!channel.title || channel.title.startsWith('@')) {
+    const ogTitleMatch = html.match(/<meta property="og:title" content="([^"]+)"/i);
+    if (ogTitleMatch) channel.title = decodeHtmlEntities(ogTitleMatch[1]).trim();
+  }
+
+  // Initializing channel post history
+  if (!channel.seenPostIds) {
+    channel.seenPostIds = [];
+  }
+
+  const unseenPosts = posts.filter(
+    (p) => !globalSeenPostTags.has(p.postTag) && !channel.seenPostIds!.includes(p.postTag)
+  );
+
+  let lastProcessedAlert: ParsedAlert | null = null;
+
+  if (unseenPosts.length > 0) {
+    // If it's the very first time we see this channel (seenPostIds is empty):
+    // Parse the 2-3 most recent posts to populate current alerts, and mark rest as seen
+    const postsToProcess = channel.seenPostIds.length === 0 ? unseenPosts.slice(-3) : unseenPosts;
+
+    for (const p of posts) {
+      globalSeenPostTags.add(p.postTag);
+      if (!channel.seenPostIds.includes(p.postTag)) {
+        channel.seenPostIds.push(p.postTag);
+      }
+    }
+
+    // Keep seenPostIds bounded
+    if (channel.seenPostIds.length > 200) {
+      channel.seenPostIds = channel.seenPostIds.slice(-200);
+    }
+
+    for (const post of postsToProcess) {
+      const alert = await processIncomingMessage(post.text, channel.username, post.numId);
+      channel.parsedMessagesCount = (channel.parsedMessagesCount || 0) + 1;
+      channel.lastParsedAt = Date.now();
+      channel.lastAlertDetected = alert.cleanedText.slice(0, 100) || 'Очищенное оповещение';
+      lastProcessedAlert = alert;
+    }
+  } else if (forceLatest && posts.length > 0) {
+    // Force test parse: re-process the latest post from the channel
+    const latestPost = posts[posts.length - 1];
+    const alert = await processIncomingMessage(latestPost.text, channel.username, latestPost.numId);
+    channel.parsedMessagesCount = (channel.parsedMessagesCount || 0) + 1;
+    channel.lastParsedAt = Date.now();
+    channel.lastAlertDetected = alert.cleanedText.slice(0, 100);
+    lastProcessedAlert = alert;
+  }
+
+  channel.lastParsedAt = Date.now();
+  saveDatabaseToDisk();
+
+  return lastProcessedAlert;
+}
+
+// Background Online Telegram Parser Loop (Fast 2.5s interval)
+let isOnlineParsingActive = false;
+
+async function runBackgroundOnlineParsing() {
+  if (isOnlineParsingActive) return;
+  const activeChannels = parsingChannels.filter((c) => c.active);
+  if (activeChannels.length === 0) return;
+
+  isOnlineParsingActive = true;
+  try {
+    for (const channel of activeChannels) {
+      try {
+        await parseOnlineChannel(channel, false);
+      } catch (err: any) {
+        console.warn(`[OnlineParser] Warning for channel ${channel.username}:`, err.message);
+      }
+    }
+  } catch (outerErr) {
+    console.error('[OnlineParser] Error in parsing cycle:', outerErr);
+  } finally {
+    isOnlineParsingActive = false;
+  }
+}
+
+// Polling active channels every 2500ms for continuous real-time updates
+setInterval(runBackgroundOnlineParsing, 2500);
+
 // ================= 12. Channels for Parsing API =================
 app.get('/api/channels', (req: Request, res: Response) => {
   res.json({
     channels: parsingChannels,
     totalCount: parsingChannels.length,
     activeCount: parsingChannels.filter((c) => c.active).length,
+    isOnlineParserActive: true,
+    pollingIntervalMs: 2500,
   });
 });
 
-app.post('/api/channels', (req: Request, res: Response) => {
+// Dedicated quick add by username ONLY (as requested by user)
+app.post('/api/channels/add-by-username', async (req: Request, res: Response) => {
+  try {
+    const { username, priority = 'HIGH', parseIntervalSeconds = 2, autoForward = true } = req.body;
+    if (!username || typeof username !== 'string') {
+      return res.status(400).json({ error: 'Укажите никнейм Telegram-канала' });
+    }
+
+    const clean = cleanChannelUsername(username);
+    if (!clean) {
+      return res.status(400).json({ error: 'Некорректный формат никнейма канала' });
+    }
+
+    // Check if already exists
+    const existing = parsingChannels.find(
+      (c) => cleanChannelUsername(c.username).toLowerCase() === clean.toLowerCase()
+    );
+    if (existing) {
+      return res.status(400).json({ error: `Канал @${clean} уже добавлен в список мониторинга` });
+    }
+
+    // Query Telegram online to verify channel existence and extract metadata
+    let channelInfo;
+    try {
+      channelInfo = await fetchTelegramChannelOnlineInfo(clean);
+    } catch (fetchErr: any) {
+      return res.status(400).json({
+        error: `Канал @${clean} не найден в Telegram или является закрытым. Укажите публичный никнейм.`,
+        details: fetchErr.message,
+      });
+    }
+
+    const newChannel: ParsingChannel = {
+      id: `ch-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      username: `@${clean}`,
+      title: channelInfo.title,
+      category: channelInfo.category,
+      active: true,
+      priority: priority as any,
+      parseIntervalSeconds: Number(parseIntervalSeconds) || 2,
+      autoForward: Boolean(autoForward),
+      parsedMessagesCount: 0,
+      notes: channelInfo.description ? channelInfo.description.slice(0, 150) : '',
+      avatarUrl: channelInfo.avatarUrl,
+      description: channelInfo.description,
+      seenPostIds: [],
+    };
+
+    parsingChannels.unshift(newChannel);
+    saveDatabaseToDisk();
+    localSqlEngine.syncChannelsFromMemory(parsingChannels);
+
+    // Immediately trigger initial online parse so messages appear right away
+    let initialAlert: ParsedAlert | null = null;
+    try {
+      initialAlert = await parseOnlineChannel(newChannel, true);
+    } catch (parseErr) {
+      console.warn('Initial parse error:', parseErr);
+    }
+
+    res.json({
+      success: true,
+      channel: newChannel,
+      initialAlert,
+      message: `Канал ${newChannel.title} (@${clean}) успешно добавлен и подключен к онлайн-парсингу`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/channels', async (req: Request, res: Response) => {
   try {
     const {
       username,
       title,
       category = 'REGIONAL',
-      priority = 'NORMAL',
-      parseIntervalSeconds = 10,
-      autoForward = false,
+      priority = 'HIGH',
+      parseIntervalSeconds = 2,
+      autoForward = true,
       notes,
     } = req.body;
 
     if (!username || typeof username !== 'string') {
-      return res.status(400).json({ error: 'Укажите username или ссылку на Telegram канал' });
+      return res.status(400).json({ error: 'Укажите никнейм или ссылку на Telegram канал' });
     }
 
-    let cleanUsername = username.trim();
-    if (cleanUsername.includes('t.me/')) {
-      cleanUsername = '@' + cleanUsername.split('t.me/')[1].replace(/\+/g, '').split('/')[0];
-    } else if (!cleanUsername.startsWith('@')) {
-      cleanUsername = '@' + cleanUsername;
+    const cleanUsername = cleanChannelUsername(username);
+    if (!cleanUsername) {
+      return res.status(400).json({ error: 'Некорректный никнейм канала' });
+    }
+
+    let finalTitle = (title && title.trim()) || `@${cleanUsername}`;
+    let avatarUrl: string | undefined;
+    let description: string | undefined;
+    let finalCategory = category;
+
+    // Fetch live metadata if not fully provided
+    try {
+      const info = await fetchTelegramChannelOnlineInfo(cleanUsername);
+      if (!title || title.trim() === cleanUsername || title.trim() === `@${cleanUsername}`) {
+        finalTitle = info.title;
+      }
+      avatarUrl = info.avatarUrl;
+      description = info.description;
+      if (!req.body.category) {
+        finalCategory = info.category;
+      }
+    } catch (e) {
+      // Allow fallback if network issue
     }
 
     const newChannel: ParsingChannel = {
       id: `ch-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      username: cleanUsername,
-      title: (title && title.trim()) || cleanUsername,
-      category,
+      username: `@${cleanUsername}`,
+      title: finalTitle,
+      category: finalCategory,
       active: true,
       priority,
-      parseIntervalSeconds: Number(parseIntervalSeconds) || 10,
+      parseIntervalSeconds: Number(parseIntervalSeconds) || 2,
       autoForward: Boolean(autoForward),
       parsedMessagesCount: 0,
-      notes: notes || '',
+      notes: notes || description?.slice(0, 150) || '',
+      avatarUrl,
+      description,
+      seenPostIds: [],
     };
 
     parsingChannels.unshift(newChannel);
     saveDatabaseToDisk();
+    localSqlEngine.syncChannelsFromMemory(parsingChannels);
+
+    // Initial online parse
+    try {
+      await parseOnlineChannel(newChannel, true);
+    } catch (e) {}
 
     res.json({ success: true, channel: newChannel });
   } catch (err: any) {
@@ -2280,9 +2791,11 @@ app.post('/api/channels/:id/toggle', (req: Request, res: Response) => {
 app.delete('/api/channels/:id', (req: Request, res: Response) => {
   parsingChannels = parsingChannels.filter((c) => c.id !== req.params.id);
   saveDatabaseToDisk();
+  localSqlEngine.syncChannelsFromMemory(parsingChannels);
   res.json({ success: true });
 });
 
+// Real Online Parsing Trigger for a specific channel
 app.post('/api/channels/:id/test-parse', async (req: Request, res: Response) => {
   try {
     const channel = parsingChannels.find((c) => c.id === req.params.id);
@@ -2290,29 +2803,29 @@ app.post('/api/channels/:id/test-parse', async (req: Request, res: Response) => 
       return res.status(404).json({ error: 'Канал не найден' });
     }
 
-    // Generate realistic message tailored to channel category
-    let samplePostText = '';
-    if (channel.category === 'AIR_FORCE') {
-      samplePostText = `🚨 УВАГА! Повітряні Сили ЗСУ інформують:\nЗафіксовано зліт 3х бортів МіГ-31К з аеродрому Саваслейка!\nРакетна небезпека по всій території України!\n\nНе ігноруйте сигнали тривоги!\n\nПідпишіться на резервний канал сповіщень: @air_alerts_reserve\nДонат на авто: https://send.monobank.ua/jar/AF3829`;
-    } else if (channel.category === 'RADAR') {
-      samplePostText = `⚠️ ОПЕРАТИВНО! ${channel.title}:\nГрупа БПЛА "Shahed" (до 4 одиниць) прямують з півдня курсом на Кропивницький / Кременчук.\nВисота 350м, працюють мобільні вогневі групи.\n\n👇 Наш секретний чат з координатами: https://t.me/+join_radar_vip\nUSDT TRC20: TL2984kjasdh98234`;
-    } else {
-      samplePostText = `🚨 ${channel.title.toUpperCase()}: ПОВІТРЯНА ТРИВОГА!\nЗагроза застосування балістичного озброєння з північно-східного напрямку!\nПеребувайте в укриттях!\n\nРеклама: Знижки на павербанки t.me/powerbank_store`;
-    }
-
-    const simulatedMsgId = Math.floor(10000 + Math.random() * 89999);
-    const alert = await processIncomingMessage(samplePostText, channel.username, simulatedMsgId);
-
-    channel.parsedMessagesCount = (channel.parsedMessagesCount || 0) + 1;
-    channel.lastParsedAt = Date.now();
-    channel.lastAlertDetected = alert.cleanedText.slice(0, 80) || 'Очищенное оповещение';
-
-    saveDatabaseToDisk();
+    const alert = await parseOnlineChannel(channel, true);
 
     res.json({
       success: true,
       alert,
       channel,
+      message: alert
+        ? `Спарсено реальное онлайн-сообщение из ${channel.username}`
+        : `Канал ${channel.username} проверен онлайн`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: `Ошибка онлайн парсинга Telegram: ${err.message}` });
+  }
+});
+
+// Real Online Parsing Trigger for ALL active channels
+app.post('/api/channels/parse-all', async (req: Request, res: Response) => {
+  try {
+    await runBackgroundOnlineParsing();
+    res.json({
+      success: true,
+      channels: parsingChannels,
+      message: 'Все активные каналы спарсены онлайн',
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
